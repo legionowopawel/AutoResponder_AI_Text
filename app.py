@@ -155,102 +155,15 @@ def call_groq(user_text):
 
 
 # -----------------------------------
-# 5. Funkcje AI – Replicate (obrazek)
+# 5. Funkcje AI – Fal.ai (obrazek, darmowy)
 # -----------------------------------
-REPLICATE_MODELS = [
-    "black-forest-labs/flux-schnell",
-    "black-forest-labs/flux-dev",
-    "stability-ai/sdxl",
-]
 
-
-def replicate_create_prediction(model: str, prompt: str):
-    """
-    Tworzy prediction w Replicate i zwraca JSON odpowiedzi lub None.
-    Używa endpointu /v1/models/{model}/predictions (bez pola 'model' w body).
-    """
-    token = os.getenv("REPLICATE_API_TOKEN")
-    if not token:
-        print("[WARN] Brak REPLICATE_API_TOKEN – obrazek nie będzie generowany")
-        return None
-
-    url = f"https://api.replicate.com/v1/models/{model}/predictions"
-    headers = {
-        "Authorization": f"Token {token}",
-        "Content-Type": "application/json",
-    }
-
-    payload = {
-        "input": {
-            "prompt": prompt,
-            "width": 512,
-            "height": 512,
-        },
-    }
-
-    try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=20)
-        if resp.status_code == 429:
-            print(f"[ERROR] Replicate throttling ({model}):", resp.status_code, resp.text)
-            # Nie próbujemy dalej innych modeli, bo limit i tak jest zbiorczy
-            return None
-        if resp.status_code not in (200, 201):
-            print(f"[ERROR] Replicate create error ({model}):", resp.status_code, resp.text)
-            return None
-        return resp.json()
-    except Exception as e:
-        print(f"[EXCEPTION] Replicate create ({model}):", e)
-        return None
-
-
-def replicate_poll_prediction(prediction_id: str):
-    """
-    Polling prediction aż do zakończenia lub błędu.
-    Zwraca JSON prediction lub None.
-    """
-    token = os.getenv("REPLICATE_API_TOKEN")
-    if not token:
-        return None
-
-    url = f"https://api.replicate.com/v1/predictions/{prediction_id}"
-    headers = {
-        "Authorization": f"Token {token}",
-        "Content-Type": "application/json",
-    }
-
-    max_attempts = 20
-    delay_seconds = 2
-
-    for attempt in range(max_attempts):
-        try:
-            resp = requests.get(url, headers=headers, timeout=20)
-            if resp.status_code != 200:
-                print("[ERROR] Replicate poll error:", resp.status_code, resp.text)
-                return None
-
-            data = resp.json()
-            status = data.get("status")
-            print(f"[INFO] Replicate status ({prediction_id}):", status)
-
-            if status in ("succeeded", "failed", "canceled"):
-                return data
-
-            time.sleep(delay_seconds)
-
-        except Exception as e:
-            print("[EXCEPTION] Replicate poll:", e)
-            return None
-
-    print("[ERROR] Replicate poll timeout")
-    return None
+FAL_MODEL = "fal-ai/flux/dev"  # może być słabszy, ale darmowy endpoint proxy
 
 
 def download_image_to_base64(url: str):
-    """
-    Pobiera obrazek z URL i zwraca base64.
-    """
     try:
-        resp = requests.get(url, timeout=30)
+        resp = requests.get(url, timeout=60)
         if resp.status_code != 200:
             print("[ERROR] Download image error:", resp.status_code, resp.text)
             return None
@@ -261,66 +174,68 @@ def download_image_to_base64(url: str):
         return None
 
 
-def call_replicate_image(user_text):
+def call_fal_image(user_text):
     """
-    Próbuje wygenerować obrazek trzema modelami Replicate (fallback).
+    Generuje obrazek przez Fal.ai.
     Zwraca (image_base64, image_url, image_source) albo (None, None, None).
     """
-    token = os.getenv("REPLICATE_API_TOKEN")
-    if not token:
-        print("[WARN] Brak REPLICATE_API_TOKEN – obrazek nie będzie generowany")
+    api_key = os.getenv("FAL_API_KEY")
+    if not api_key:
+        print("[WARN] Brak FAL_API_KEY – obrazek nie będzie generowany")
         return None, None, None
 
     prompt_template = load_image_prompt()
     safe_user_text = summarize_and_truncate(user_text, 800)
     final_prompt = prompt_template.replace("{{USER_TEXT}}", safe_user_text)
 
-    for model in REPLICATE_MODELS:
-        print(f"[INFO] Próba generowania obrazka modelem Replicate: {model}")
+    url = f"https://fal.run/{FAL_MODEL}"
+    headers = {
+        "Authorization": f"Key {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "input": {
+            "prompt": final_prompt,
+            # Fal zwykle sam dobiera rozmiar, ale możemy zasugerować:
+            "image_size": "square_hd",
+        }
+    }
 
-        prediction = replicate_create_prediction(model, final_prompt)
-        if not prediction:
-            # Jeśli create się nie udało (422/429/itp.), próbujemy kolejny model,
-            # ale przy 429 i tak limit jest wspólny – więc realnie i tak będzie ciężko.
-            continue
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=60)
+        if resp.status_code != 200:
+            print("[ERROR] Fal.ai error:", resp.status_code, resp.text)
+            return None, None, None
 
-        prediction_id = prediction.get("id")
-        if not prediction_id:
-            print("[ERROR] Brak ID prediction w odpowiedzi Replicate")
-            continue
+        data = resp.json()
+        # typowy format: {"images": [{"url": "..."}]}
+        images = data.get("images") or data.get("output") or []
+        image_url = None
 
-        result = replicate_poll_prediction(prediction_id)
-        if not result:
-            continue
+        if isinstance(images, list) and len(images) > 0:
+            first = images[0]
+            if isinstance(first, dict):
+                image_url = first.get("url") or first.get("image_url")
+            elif isinstance(first, str):
+                image_url = first
+        elif isinstance(images, dict):
+            image_url = images.get("url") or images.get("image_url")
 
-        status = result.get("status")
-        if status != "succeeded":
-            print(f"[ERROR] Prediction nieudane ({model}), status:", status)
-            continue
-
-        output = result.get("output")
-        if not output:
-            print(f"[ERROR] Brak output w prediction ({model})")
-            continue
-
-        if isinstance(output, list) and len(output) > 0:
-            image_url = output[0]
-        elif isinstance(output, str):
-            image_url = output
-        else:
-            print(f"[ERROR] Nieoczekiwany format output ({model}):", output)
-            continue
+        if not image_url:
+            print("[ERROR] Fal.ai – brak URL obrazka w odpowiedzi:", data)
+            return None, None, None
 
         image_b64 = download_image_to_base64(image_url)
         if not image_b64:
-            print(f"[ERROR] Nie udało się pobrać obrazka ({model})")
-            continue
+            print("[ERROR] Fal.ai – nie udało się pobrać obrazka")
+            return None, None, None
 
-        print(f"[INFO] Udało się wygenerować obrazek modelem Replicate: {model}")
-        return image_b64, image_url, f"REPLICATE:{model}"
+        print("[INFO] Udało się wygenerować obrazek przez Fal.ai")
+        return image_b64, image_url, f"FAL:{FAL_MODEL}"
 
-    print("[ERROR] Żaden model Replicate nie wygenerował obrazka")
-    return None, None, None
+    except Exception as e:
+        print("[EXCEPTION] Fal.ai:", e)
+        return None, None, None
 
 
 # -----------------------------------
@@ -350,14 +265,14 @@ def webhook():
     # --- Tekst z GROQ ---
     text, text_source = call_groq(body)
 
-    # --- Obrazek z Replicate ---
-    image_b64, image_url, image_source = call_replicate_image(body)
+    # --- Obrazek z Fal.ai ---
+    image_b64, image_url, image_source = call_fal_image(body)
 
     has_text = bool(text)
     has_image = bool(image_b64)
 
     if not has_text and not has_image:
-        print("[ERROR] Brak odpowiedzi z GROQ i brak obrazka z Replicate – nic nie wysyłam")
+        print("[ERROR] Brak odpowiedzi z GROQ i brak obrazka z Fal.ai – nic nie wysyłam")
         return jsonify({
             "status": "error",
             "reason": "no ai output",
