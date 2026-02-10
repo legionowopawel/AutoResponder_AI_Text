@@ -175,7 +175,7 @@ def call_hf_image(user_text):
     final_prompt = prompt_template.replace("{{USER_TEXT}}", safe_user_text)
 
     # NOWY POPRAWNY ENDPOINT HF
-    url = f"https://router.huggingface.co/{model_id}"
+    url = f"https://api-inference.huggingface.co/models/{model_id}"
     headers = {"Authorization": f"Bearer {key}"}
 
     try:
