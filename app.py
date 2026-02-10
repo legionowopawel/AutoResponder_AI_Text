@@ -174,7 +174,7 @@ def call_hf_image(user_text):
     safe_user_text = summarize_and_truncate(user_text, 800)
     final_prompt = prompt_template.replace("{{USER_TEXT}}", safe_user_text)
 
-    url = f"https://api-inference.huggingface.co/models/{model_id}"
+    url = f"https://router.huggingface.co/{model_id}"
     headers = {"Authorization": f"Bearer {key}"}
 
     try:
