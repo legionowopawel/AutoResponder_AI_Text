@@ -174,6 +174,7 @@ def call_hf_image(user_text):
     safe_user_text = summarize_and_truncate(user_text, 800)
     final_prompt = prompt_template.replace("{{USER_TEXT}}", safe_user_text)
 
+    # NOWY POPRAWNY ENDPOINT HF
     url = f"https://router.huggingface.co/{model_id}"
     headers = {"Authorization": f"Bearer {key}"}
 
@@ -188,7 +189,6 @@ def call_hf_image(user_text):
             print("[ERROR] HF error:", response.status_code, response.text)
             return None, None
 
-        # HF zwraca bezpośrednio bajty obrazka
         image_bytes = response.content
         image_b64 = base64.b64encode(image_bytes).decode("ascii")
         return image_b64, f"HF:{model_id}"
