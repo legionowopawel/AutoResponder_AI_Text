@@ -167,20 +167,20 @@ REPLICATE_MODELS = [
 def replicate_create_prediction(model: str, prompt: str):
     """
     Tworzy prediction w Replicate i zwraca JSON odpowiedzi lub None.
+    Używa endpointu /v1/models/{model}/predictions (bez pola 'model' w body).
     """
     token = os.getenv("REPLICATE_API_TOKEN")
     if not token:
         print("[WARN] Brak REPLICATE_API_TOKEN – obrazek nie będzie generowany")
         return None
 
-    url = "https://api.replicate.com/v1/predictions"
+    url = f"https://api.replicate.com/v1/models/{model}/predictions"
     headers = {
         "Authorization": f"Token {token}",
         "Content-Type": "application/json",
     }
 
     payload = {
-        "model": model,
         "input": {
             "prompt": prompt,
             "width": 512,
@@ -190,7 +190,11 @@ def replicate_create_prediction(model: str, prompt: str):
 
     try:
         resp = requests.post(url, headers=headers, json=payload, timeout=20)
-        if resp.status_code != 201 and resp.status_code != 200:
+        if resp.status_code == 429:
+            print(f"[ERROR] Replicate throttling ({model}):", resp.status_code, resp.text)
+            # Nie próbujemy dalej innych modeli, bo limit i tak jest zbiorczy
+            return None
+        if resp.status_code not in (200, 201):
             print(f"[ERROR] Replicate create error ({model}):", resp.status_code, resp.text)
             return None
         return resp.json()
@@ -243,7 +247,7 @@ def replicate_poll_prediction(prediction_id: str):
 
 def download_image_to_base64(url: str):
     """
-    Pobiera obrazek z URL i zwraca base64 (PNG/JPEG).
+    Pobiera obrazek z URL i zwraca base64.
     """
     try:
         resp = requests.get(url, timeout=30)
@@ -276,6 +280,8 @@ def call_replicate_image(user_text):
 
         prediction = replicate_create_prediction(model, final_prompt)
         if not prediction:
+            # Jeśli create się nie udało (422/429/itp.), próbujemy kolejny model,
+            # ale przy 429 i tak limit jest wspólny – więc realnie i tak będzie ciężko.
             continue
 
         prediction_id = prediction.get("id")
@@ -297,7 +303,6 @@ def call_replicate_image(user_text):
             print(f"[ERROR] Brak output w prediction ({model})")
             continue
 
-        # Zakładamy, że output to lista URL-i
         if isinstance(output, list) and len(output) > 0:
             image_url = output[0]
         elif isinstance(output, str):
