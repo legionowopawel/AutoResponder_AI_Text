@@ -181,7 +181,7 @@ def webhook():
         "Kod źródłowy projektu dostępny tutaj:\n"
         "https://github.com/legionowopawel/AutoIllustrator-Cloud2.git\n"
         "────────────────────────────────────────────\n"
-        f"Źródło modelu: {source}\n"
+        f"ProgramPawła o nazwie: Autoresponder_Tresc_Obrazek_Zalacznik - Źródło modelu: {source}\n"
     )
 
     return jsonify({"status": "ok", "reply": final_reply}), 200
