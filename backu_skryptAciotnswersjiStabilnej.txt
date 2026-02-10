@@ -1,0 +1,159 @@
+function checkMail() {
+  // 0. Sprawdzenie limitów Gmail
+  try {
+    GmailApp.getInboxUnreadCount();
+  } catch (e) {
+    GmailApp.sendEmail(
+      "pawlawiecka@gmail.com",
+      "Autoresponder – Gmail zablokowany",
+      "Gmail osiągnął limit. Zmniejsz częstotliwość triggera.\n\nSzczegóły:\n" + e
+    );
+    return;
+  }
+
+  // 1. Lista dozwolonych emaili (normalizowana)
+  const allowed = [
+    "archiwumkota@gmail.com",
+    "aniasadowska11@gmail.com",
+    "marekzielinskixyz@gmail.com",
+    "sopor@op.pl",
+    "piotrsoporowski@gmail.com",
+    "matelaxyz@gmail.com",
+    "czeczekm@gmail.com",
+    "persecyfr@gmail.com",
+    "ooooooooohhhhhhhhhooooooooo@gmail.com",
+    "luczak@zoliborznotariusze.pl",
+    "gdziesamojepieniadzepytam@gmail.com",
+    "episiewicz@gmail.com",
+    "archiwummoniki@gmail.com"
+  ].map(e => normalizeEmail(e));
+
+  // 2. Pobieramy nieprzeczytane maile z ostatnich 5 godzin
+  const query = 'is:unread newer_than:5h -label:processed';
+  const MAX_THREADS = 15;
+  const threads = GmailApp.search(query).slice(0, MAX_THREADS);
+
+  threads.forEach(thread => {
+    const messages = thread.getMessages();
+    const msg = messages[messages.length - 1];
+
+    // Pobieramy nadawcę
+    let rawFrom = msg.getFrom();
+    let from = rawFrom.match(/<(.+?)>/)?.[1] || rawFrom;
+    from = normalizeEmail(from);
+
+    Logger.log("FROM: " + from);
+
+    // 3. Jeśli nadawca NIE jest na liście → ignorujemy
+    if (!allowed.includes(from)) {
+      Logger.log("IGNORED – not allowed: " + from);
+      msg.markRead();
+      thread.addLabel(GmailApp.createLabel("processed"));
+      return;
+    }
+
+    const subject = msg.getSubject() || "";
+    const body = msg.getPlainBody() || "";
+
+    // 4. Jeśli treść pusta → nie wołamy webhooka
+    if (!body.trim()) {
+      GmailApp.sendEmail(
+        "pawlawiecka@gmail.com",
+        "Autoresponder – pusty email",
+        "Odebrano pustą wiadomość.\n\nNadawca: " +
+          from +
+          "\nTemat: " +
+          subject +
+          "\n\nAI nie zostało wywołane."
+      );
+      msg.markRead();
+      thread.addLabel(GmailApp.createLabel("processed"));
+      return;
+    }
+
+    // 5. Wywołanie webhooka z RETRY (3 próby)
+    const payload = {
+      from: from,
+      subject: subject,
+      body: body
+    };
+
+    let responseJson = null;
+    let success = false;
+
+    // 🔥 TU JEST POPRAWNY LINK DO TWOJEGO NOWEGO PROJEKTU
+    const WEBHOOK_URL = "https://autoresponder-tresc-obrazek-zalacznik.onrender.com/webhook";
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      Logger.log("Webhook attempt " + attempt);
+
+      const response = UrlFetchApp.fetch(WEBHOOK_URL, {
+        method: "post",
+        contentType: "application/json",
+        payload: JSON.stringify(payload),
+        muteHttpExceptions: true
+      });
+
+      const text = response.getContentText();
+      Logger.log("WEBHOOK RAW RESPONSE: " + text);
+
+      try {
+        responseJson = JSON.parse(text);
+      } catch (e) {
+        Logger.log("JSON parse error: " + e);
+      }
+
+      // Retry tylko przy błędach technicznych
+      if (!responseJson || response.getResponseCode() >= 500) {
+        Logger.log("Backend error or no JSON – retrying...");
+        Utilities.sleep(2000);
+        continue;
+      }
+
+      success = true;
+      break;
+    }
+
+    if (!success) {
+      GmailApp.sendEmail(
+        "pawlawiecka@gmail.com",
+        "Autoresponder – backend nie odpowiada",
+        "Backend nie zwrócił poprawnej odpowiedzi po 3 próbach.\n\nNadawca: " +
+          from +
+          "\nTemat: " +
+          subject
+      );
+      msg.markRead();
+      thread.addLabel(GmailApp.createLabel("processed"));
+      return;
+    }
+
+    // 6. Wysyłamy odpowiedź do nadawcy
+    if (responseJson && responseJson.status === "ok") {
+      GmailApp.sendEmail(
+        from,
+        "Re: " + subject,
+        responseJson.reply
+      );
+    }
+
+    // 7. Oznaczamy jako przetworzone
+    msg.markRead();
+    thread.addLabel(GmailApp.createLabel("processed"));
+  });
+}
+
+
+// -----------------------------
+// Normalizacja Gmail
+// -----------------------------
+function normalizeEmail(email) {
+  email = email.toLowerCase().trim();
+  if (email.endsWith("@gmail.com")) {
+    let [local, domain] = email.split("@");
+    local = local.replace(/\./g, ""); // usuń kropki
+    local = local.replace(/\+.*/, ""); // usuń aliasy
+    return local + "@" + domain;
+  }
+  return email;
+}
