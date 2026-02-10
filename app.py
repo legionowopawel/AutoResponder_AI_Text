@@ -1,4 +1,5 @@
 import os
+import time
 import base64
 import requests
 from flask import Flask, request, jsonify
@@ -154,60 +155,167 @@ def call_groq(user_text):
 
 
 # -----------------------------------
-# 5. Funkcje AI – HuggingFace (obrazek)
+# 5. Funkcje AI – Replicate (obrazek)
 # -----------------------------------
-def call_hf_image(user_text):
-    """
-    Fallback 3 modeli działających na routerze HF.
-    Zwraca (image_base64, source) albo (None, None).
-    """
+REPLICATE_MODELS = [
+    "black-forest-labs/flux-schnell",
+    "black-forest-labs/flux-dev",
+    "stability-ai/sdxl",
+]
 
-    key = os.getenv("YOUR_HF_API_KEY")
-    if not key:
-        print("[WARN] Brak klucza HuggingFace – obrazek nie będzie generowany")
-        return None, None
 
-    # Modele, które DZIAŁAJĄ w routerze HF w 2026 roku
-    models = [
-        "black-forest-labs/FLUX.1-schnell",
-        "black-forest-labs/FLUX.1-dev",
-        "stabilityai/stable-diffusion-3-medium"
-    ]
+def replicate_create_prediction(model: str, prompt: str):
+    """
+    Tworzy prediction w Replicate i zwraca JSON odpowiedzi lub None.
+    """
+    token = os.getenv("REPLICATE_API_TOKEN")
+    if not token:
+        print("[WARN] Brak REPLICATE_API_TOKEN – obrazek nie będzie generowany")
+        return None
+
+    url = "https://api.replicate.com/v1/predictions"
+    headers = {
+        "Authorization": f"Token {token}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "model": model,
+        "input": {
+            "prompt": prompt,
+            "width": 512,
+            "height": 512,
+        },
+    }
+
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=20)
+        if resp.status_code != 201 and resp.status_code != 200:
+            print(f"[ERROR] Replicate create error ({model}):", resp.status_code, resp.text)
+            return None
+        return resp.json()
+    except Exception as e:
+        print(f"[EXCEPTION] Replicate create ({model}):", e)
+        return None
+
+
+def replicate_poll_prediction(prediction_id: str):
+    """
+    Polling prediction aż do zakończenia lub błędu.
+    Zwraca JSON prediction lub None.
+    """
+    token = os.getenv("REPLICATE_API_TOKEN")
+    if not token:
+        return None
+
+    url = f"https://api.replicate.com/v1/predictions/{prediction_id}"
+    headers = {
+        "Authorization": f"Token {token}",
+        "Content-Type": "application/json",
+    }
+
+    max_attempts = 20
+    delay_seconds = 2
+
+    for attempt in range(max_attempts):
+        try:
+            resp = requests.get(url, headers=headers, timeout=20)
+            if resp.status_code != 200:
+                print("[ERROR] Replicate poll error:", resp.status_code, resp.text)
+                return None
+
+            data = resp.json()
+            status = data.get("status")
+            print(f"[INFO] Replicate status ({prediction_id}):", status)
+
+            if status in ("succeeded", "failed", "canceled"):
+                return data
+
+            time.sleep(delay_seconds)
+
+        except Exception as e:
+            print("[EXCEPTION] Replicate poll:", e)
+            return None
+
+    print("[ERROR] Replicate poll timeout")
+    return None
+
+
+def download_image_to_base64(url: str):
+    """
+    Pobiera obrazek z URL i zwraca base64 (PNG/JPEG).
+    """
+    try:
+        resp = requests.get(url, timeout=30)
+        if resp.status_code != 200:
+            print("[ERROR] Download image error:", resp.status_code, resp.text)
+            return None
+        image_bytes = resp.content
+        return base64.b64encode(image_bytes).decode("ascii")
+    except Exception as e:
+        print("[EXCEPTION] Download image:", e)
+        return None
+
+
+def call_replicate_image(user_text):
+    """
+    Próbuje wygenerować obrazek trzema modelami Replicate (fallback).
+    Zwraca (image_base64, image_url, image_source) albo (None, None, None).
+    """
+    token = os.getenv("REPLICATE_API_TOKEN")
+    if not token:
+        print("[WARN] Brak REPLICATE_API_TOKEN – obrazek nie będzie generowany")
+        return None, None, None
 
     prompt_template = load_image_prompt()
     safe_user_text = summarize_and_truncate(user_text, 800)
     final_prompt = prompt_template.replace("{{USER_TEXT}}", safe_user_text)
 
-    headers = {"Authorization": f"Bearer {key}"}
+    for model in REPLICATE_MODELS:
+        print(f"[INFO] Próba generowania obrazka modelem Replicate: {model}")
 
-    for model_id in models:
-        url = f"https://router.huggingface.co/{model_id}"
-        print(f"[INFO] Próba generowania obrazka modelem: {model_id}")
-
-        try:
-            response = requests.post(
-                url,
-                headers=headers,
-                json={"inputs": final_prompt},
-                timeout=60,
-            )
-
-            if response.status_code != 200:
-                print(f"[ERROR] HF model {model_id} error:", response.status_code, response.text)
-                continue
-
-            image_bytes = response.content
-            image_b64 = base64.b64encode(image_bytes).decode("ascii")
-
-            print(f"[INFO] Udało się wygenerować obrazek modelem: {model_id}")
-            return image_b64, f"HF:{model_id}"
-
-        except Exception as e:
-            print(f"[EXCEPTION] HF model {model_id}:", e)
+        prediction = replicate_create_prediction(model, final_prompt)
+        if not prediction:
             continue
 
-    print("[ERROR] Żaden model HuggingFace nie wygenerował obrazka")
-    return None, None
+        prediction_id = prediction.get("id")
+        if not prediction_id:
+            print("[ERROR] Brak ID prediction w odpowiedzi Replicate")
+            continue
+
+        result = replicate_poll_prediction(prediction_id)
+        if not result:
+            continue
+
+        status = result.get("status")
+        if status != "succeeded":
+            print(f"[ERROR] Prediction nieudane ({model}), status:", status)
+            continue
+
+        output = result.get("output")
+        if not output:
+            print(f"[ERROR] Brak output w prediction ({model})")
+            continue
+
+        # Zakładamy, że output to lista URL-i
+        if isinstance(output, list) and len(output) > 0:
+            image_url = output[0]
+        elif isinstance(output, str):
+            image_url = output
+        else:
+            print(f"[ERROR] Nieoczekiwany format output ({model}):", output)
+            continue
+
+        image_b64 = download_image_to_base64(image_url)
+        if not image_b64:
+            print(f"[ERROR] Nie udało się pobrać obrazka ({model})")
+            continue
+
+        print(f"[INFO] Udało się wygenerować obrazek modelem Replicate: {model}")
+        return image_b64, image_url, f"REPLICATE:{model}"
+
+    print("[ERROR] Żaden model Replicate nie wygenerował obrazka")
+    return None, None, None
 
 
 # -----------------------------------
@@ -237,14 +345,14 @@ def webhook():
     # --- Tekst z GROQ ---
     text, text_source = call_groq(body)
 
-    # --- Obrazek z HuggingFace ---
-    image_b64, image_source = call_hf_image(body)
+    # --- Obrazek z Replicate ---
+    image_b64, image_url, image_source = call_replicate_image(body)
 
     has_text = bool(text)
     has_image = bool(image_b64)
 
     if not has_text and not has_image:
-        print("[ERROR] Brak odpowiedzi z GROQ i brak obrazka z HuggingFace – nic nie wysyłam")
+        print("[ERROR] Brak odpowiedzi z GROQ i brak obrazka z Replicate – nic nie wysyłam")
         return jsonify({
             "status": "error",
             "reason": "no ai output",
@@ -256,10 +364,27 @@ def webhook():
             "Treść mojej odpowiedzi:\n"
             "Na podstawie tego, co otrzymałem, przygotowałem odpowiedź:\n\n"
             f"{text}\n\n"
+        )
+
+        if has_image and image_url:
+            final_reply += (
+                "Link do wygenerowanego obrazka:\n"
+                f"{image_url}\n\n"
+            )
+
+        final_reply += (
             "────────────────────────────────────────────\n"
-            "Ta wiadomość została wygenerowana automatycznie przez system Pawła.\n"
+            "Ta wiadomość została wygenerowana automatycznie przez system: i\n"
+            "program Pawła :\n"
+            "https://github.com/legionowopawel/Autoresponder_Tresc_Obrazek_Zalacznik\n"
+            "• Google Apps Script – obsługa skrzynki Gmail\n"
+            "• Render.com – backend API odpowiadający na wiadomości\n"
+            "• Groq – modele AI generujące treść odpowiedzi\n\n"
+            "Kod źródłowy projektu dostępny tutaj:\n"
+            "https://github.com/legionowopawel/AutoIllustrator-Cloud2.git\n"
             "────────────────────────────────────────────\n"
-            f"Źródło modelu tekstu: {text_source}\n"
+            f"Program Pawła o nazwie: Autoresponder_Tresc_Obrazek_Zalacznik - Źródło\n"
+            f"modelu tekstu: {text_source}     oraz model grafiki uzyty do obrazka: {image_source}\n"
         )
 
     return jsonify({
@@ -268,6 +393,7 @@ def webhook():
         "has_image": has_image,
         "reply": final_reply,
         "image_base64": image_b64,
+        "image_url": image_url,
         "image_mime": "image/png" if has_image else None,
         "text_source": text_source,
         "image_source": image_source,
