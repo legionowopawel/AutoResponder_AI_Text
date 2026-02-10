@@ -1,0 +1,19 @@
+# --- Python cache ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- Virtual environments ---
+.env
+.venv/
+venv/
+env/
+
+# --- IDE / Editor files ---
+.idea/
+.vscode/
+.DS_Store
+
+# --- Project-specific ---
+ideaProgramu.txt
