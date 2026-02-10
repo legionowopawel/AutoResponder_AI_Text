@@ -174,7 +174,7 @@ def webhook():
         "Na podstawie tego, co otrzymałem, przygotowałem odpowiedź:\n\n"
         f"{text}\n\n"
         "────────────────────────────────────────────\n"
-        "Ta wiadomość została wygenerowana automatycznie przez system:\n"
+        "Ta wiadomość została wygenerowana automatycznie przez system: i program Pawła : https://github.com/legionowopawel/Autoresponder_Tresc_Obrazek_Zalacznik \n"
         "• Google Apps Script – obsługa skrzynki Gmail\n"
         "• Render.com – backend API odpowiadający na wiadomości\n"
         "• Groq – modele AI generujące treść odpowiedzi\n\n"
