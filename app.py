@@ -1,6 +1,4 @@
 import os
-import time
-import base64
 import requests
 from flask import Flask, request, jsonify
 
@@ -62,17 +60,6 @@ def load_prompt():
     except FileNotFoundError:
         print("[ERROR] Brak pliku prompt.txt")
         return "Brak pliku prompt.txt\n\n{{USER_TEXT}}"
-
-
-def load_image_prompt():
-    try:
-        with open("prompt_obrazek.txt", "r", encoding="utf-8") as f:
-            txt = f.read()
-            print("[INFO] Wczytano prompt_obrazek.txt (długość:", len(txt), ")")
-            return txt
-    except FileNotFoundError:
-        print("[WARN] Brak pliku prompt_obrazek.txt – używam domyślnego promptu")
-        return "Wygeneruj ilustrację pasującą do poniższej wiadomości użytkownika:\n\n{{USER_TEXT}}"
 
 
 def summarize_and_truncate(text: str, max_chars: int = MAX_USER_CHARS) -> str:
@@ -155,94 +142,22 @@ def call_groq(user_text):
 
 
 # -----------------------------------
-# 5. Funkcje AI – Fal.ai (obrazek, darmowy)
-# -----------------------------------
-
-FAL_MODEL = "fal-ai/flux/dev"  # może być słabszy, ale darmowy endpoint proxy
-
-
-def download_image_to_base64(url: str):
-    try:
-        resp = requests.get(url, timeout=60)
-        if resp.status_code != 200:
-            print("[ERROR] Download image error:", resp.status_code, resp.text)
-            return None
-        image_bytes = resp.content
-        return base64.b64encode(image_bytes).decode("ascii")
-    except Exception as e:
-        print("[EXCEPTION] Download image:", e)
-        return None
-
-
-def call_fal_image(user_text):
-    """
-    Generuje obrazek przez Fal.ai.
-    Zwraca (image_base64, image_url, image_source) albo (None, None, None).
-    """
-    api_key = os.getenv("FAL_API_KEY")
-    if not api_key:
-        print("[WARN] Brak FAL_API_KEY – obrazek nie będzie generowany")
-        return None, None, None
-
-    prompt_template = load_image_prompt()
-    safe_user_text = summarize_and_truncate(user_text, 800)
-    final_prompt = prompt_template.replace("{{USER_TEXT}}", safe_user_text)
-
-    url = f"https://fal.run/{FAL_MODEL}"
-    headers = {
-        "Authorization": f"Key {api_key}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "input": {
-            "prompt": final_prompt,
-            # Fal zwykle sam dobiera rozmiar, ale możemy zasugerować:
-            "image_size": "square_hd",
-        }
-    }
-
-    try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=60)
-        if resp.status_code != 200:
-            print("[ERROR] Fal.ai error:", resp.status_code, resp.text)
-            return None, None, None
-
-        data = resp.json()
-        # typowy format: {"images": [{"url": "..."}]}
-        images = data.get("images") or data.get("output") or []
-        image_url = None
-
-        if isinstance(images, list) and len(images) > 0:
-            first = images[0]
-            if isinstance(first, dict):
-                image_url = first.get("url") or first.get("image_url")
-            elif isinstance(first, str):
-                image_url = first
-        elif isinstance(images, dict):
-            image_url = images.get("url") or images.get("image_url")
-
-        if not image_url:
-            print("[ERROR] Fal.ai – brak URL obrazka w odpowiedzi:", data)
-            return None, None, None
-
-        image_b64 = download_image_to_base64(image_url)
-        if not image_b64:
-            print("[ERROR] Fal.ai – nie udało się pobrać obrazka")
-            return None, None, None
-
-        print("[INFO] Udało się wygenerować obrazek przez Fal.ai")
-        return image_b64, image_url, f"FAL:{FAL_MODEL}"
-
-    except Exception as e:
-        print("[EXCEPTION] Fal.ai:", e)
-        return None, None, None
-
-
-# -----------------------------------
-# 6. Webhook
+# 5. Webhook
 # -----------------------------------
 @app.route("/webhook", methods=["POST"])
 def webhook():
+    # Prosta ochrona – sekret w nagłówku
+    secret_header = request.headers.get("X-Webhook-Secret")
+    expected_secret = os.getenv("WEBHOOK_SECRET", "")
+    if not expected_secret or secret_header != expected_secret:
+        print("[WARN] Nieprawidłowy lub brak X-Webhook-Secret")
+        return jsonify({"error": "unauthorized"}), 401
+
+    # Opcjonalna ochrona przed zbyt dużym payloadem
+    if request.content_length and request.content_length > 20000:
+        print("[WARN] Payload too large:", request.content_length)
+        return jsonify({"error": "payload too large"}), 413
+
     data = request.json or {}
 
     sender_raw = (data.get("from") or data.get("sender") or "").lower()
@@ -264,59 +179,56 @@ def webhook():
 
     # --- Tekst z GROQ ---
     text, text_source = call_groq(body)
-
-    # --- Obrazek z Fal.ai ---
-    image_b64, image_url, image_source = call_fal_image(body)
-
     has_text = bool(text)
-    has_image = bool(image_b64)
 
-    if not has_text and not has_image:
-        print("[ERROR] Brak odpowiedzi z GROQ i brak obrazka z Fal.ai – nic nie wysyłam")
+    if not has_text:
+        print("[ERROR] Brak odpowiedzi z GROQ – nic nie wysyłam")
         return jsonify({
             "status": "error",
             "reason": "no ai output",
         }), 200
 
-    final_reply = None
-    if has_text:
-        final_reply = (
-            "Treść mojej odpowiedzi:\n"
-            "Na podstawie tego, co otrzymałem, przygotowałem odpowiedź:\n\n"
-            f"{text}\n\n"
-        )
+    # Budujemy HTML odpowiedzi
+    # Nagłówek pogrubiony, treść AI kursywą, stopka mała, ciemnozielona, Georgia
+    footer_html = f"""
+<hr>
+<div style="font-size: 11px; color: #0b3d0b; font-family: Georgia, 'Times New Roman', serif; line-height: 1.4;">
+────────────────────────────────────────────<br>
+Ta wiadomość została wygenerowana automatycznie przez system: i<br>
+program Pawła :<br>
+<a href="https://github.com/legionowopawel/Autoresponder_Tresc_Obrazek_Zalacznik" style="color:#0b3d0b;">
+https://github.com/legionowopawel/Autoresponder_Tresc_Obrazek_Zalacznik
+</a><br>
+• Google Apps Script – obsługa skrzynki Gmail<br>
+• Render.com – backend API odpowiadający na wiadomości<br>
+• Groq – modele AI generujące treść odpowiedzi<br>
+<br>
+Kod źródłowy projektu dostępny tutaj:<br>
+<a href="https://github.com/legionowopawel/AutoIllustrator-Cloud2.git" style="color:#0b3d0b;">
+https://github.com/legionowopawel/AutoIllustrator-Cloud2.git
+</a><br>
+────────────────────────────────────────────<br>
+Program Pawła o nazwie: Autoresponder_Tresc_Obrazek_Zalacznik - Źródło<br>
+modelu tekstu: {text_source}     oraz model grafiki uzyty do obrazka: None<br>
+</div>
+"""
 
-        if has_image and image_url:
-            final_reply += (
-                "Link do wygenerowanego obrazka:\n"
-                f"{image_url}\n\n"
-            )
+    final_reply_html = f"""
+<div style="font-family: Arial, sans-serif; font-size: 14px; color: #000000;">
+  <p><b>Treść mojej odpowiedzi:</b><br>
+  <b>Na podstawie tego, co otrzymałem, przygotowałem odpowiedź:</b></p>
 
-        final_reply += (
-            "────────────────────────────────────────────\n"
-            "Ta wiadomość została wygenerowana automatycznie przez system: i\n"
-            "program Pawła :\n"
-            "https://github.com/legionowopawel/Autoresponder_Tresc_Obrazek_Zalacznik\n"
-            "• Google Apps Script – obsługa skrzynki Gmail\n"
-            "• Render.com – backend API odpowiadający na wiadomości\n"
-            "• Groq – modele AI generujące treść odpowiedzi\n\n"
-            "Kod źródłowy projektu dostępny tutaj:\n"
-            "https://github.com/legionowopawel/AutoIllustrator-Cloud2.git\n"
-            "────────────────────────────────────────────\n"
-            f"Program Pawła o nazwie: Autoresponder_Tresc_Obrazek_Zalacznik - Źródło\n"
-            f"modelu tekstu: {text_source}     oraz model grafiki uzyty do obrazka: {image_source}\n"
-        )
+  <p><i>{text}</i></p>
+
+  {footer_html}
+</div>
+"""
 
     return jsonify({
         "status": "ok",
-        "has_text": has_text,
-        "has_image": has_image,
-        "reply": final_reply,
-        "image_base64": image_b64,
-        "image_url": image_url,
-        "image_mime": "image/png" if has_image else None,
+        "has_text": True,
+        "reply": final_reply_html,
         "text_source": text_source,
-        "image_source": image_source,
     }), 200
 
 
