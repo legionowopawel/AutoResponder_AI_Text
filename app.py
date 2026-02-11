@@ -440,6 +440,30 @@ def load_pdf_base64(filename: str) -> tuple[str, str]:
     return "", "application/pdf"
 
 
+def load_pdf_biznes_base64(filename: str) -> tuple[str, str]:
+    base_path = os.path.join("pdf_biznes", filename)
+
+    def _read(path: str) -> str | None:
+        try:
+            with open(path, "rb") as f:
+                return base64.b64encode(f.read()).decode("ascii")
+        except Exception as e:
+            print(f"[ERROR] Nie udało się wczytać PDF biznesowego {path}: {e}")
+            return None
+
+    b64 = _read(base_path)
+    if b64:
+        return b64, "application/pdf"
+
+    # fallback
+    fallback = os.path.join("pdf_biznes", "kontakt_godziny_pracy_notariusza_podstawowe_informacje.pdf")
+    b64_fallback = _read(fallback)
+    if b64_fallback:
+        return b64_fallback, "application/pdf"
+
+    print("[ERROR] Nie udało się wczytać nawet fallback biznesowego PDF")
+    return "", "application/pdf"
+
 # -----------------------------------
 # 8. Webhook
 # -----------------------------------
