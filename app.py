@@ -27,7 +27,7 @@ MAX_MODEL_REPLY_CHARS = 1500
 
 # Conservative token settings to reduce TPD usage
 GROQ_MAX_TOKENS_NORMAL = int(os.getenv("GROQ_MAX_TOKENS_NORMAL", "256"))
-GROQ_MAX_TOKENS_BIZ = int(os.getenv("GROQ_MAX_TOKENS_BIZ", "400"))
+GROQ_MAX_TOKENS_BIZ = int(os.getenv("GROQ_MAX_TOKENS_BIZ", "300"))
 
 # Simple in-memory cache for identical requests (process-local)
 CACHE_TTL = int(os.getenv("CACHE_TTL_SECONDS", "3600"))  # default 1 hour
