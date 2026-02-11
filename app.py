@@ -1,4 +1,5 @@
 import os
+import base64
 import requests
 from flask import Flask, request, jsonify
 
@@ -38,6 +39,7 @@ def load_allowed_emails():
 
 
 ALLOWED_EMAILS = load_allowed_emails()
+SLOWO_KLUCZ = (os.getenv("SLOWO_KLUCZ", "") or "").strip().lower()
 
 
 # -----------------------------------
@@ -142,7 +144,161 @@ def call_groq(user_text):
 
 
 # -----------------------------------
-# 5. Webhook
+# 5. AI – rozpoznawanie emocji (drugie zapytanie)
+# -----------------------------------
+def detect_emotion_ai(user_text: str) -> str | None:
+    """
+    Zwraca jedną emocję z listy:
+    radość, smutek, złość, strach, neutralne, zaskoczenie, nuda, spokój
+    albo None, jeśli się nie uda.
+    """
+    key = os.getenv("YOUR_GROQ_API_KEY")
+    models_env = os.getenv("GROQ_MODELS", "").strip()
+    if not key or not models_env:
+        print("[ERROR] Brak konfiguracji GROQ do rozpoznawania emocji")
+        return None
+
+    model_id = models_env.split(",")[0].strip()  # pierwszy model z listy
+
+    prompt = (
+        "Na podstawie poniższego tekstu określ jedną dominującą emocję z listy:\n"
+        "radość, smutek, złość, strach, neutralne, zaskoczenie, nuda, spokój.\n\n"
+        "Zwróć tylko jedno słowo z tej listy, bez dodatkowego komentarza.\n\n"
+        f"Tekst:\n{user_text}"
+    )
+
+    try:
+        response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model_id,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 16,
+            },
+            timeout=15,
+        )
+
+        if response.status_code != 200:
+            print("[ERROR] GROQ emotion error:", response.status_code, response.text)
+            return None
+
+        data = response.json()
+        content = data["choices"][0]["message"]["content"].strip().lower()
+        emotion = content.split()[0]
+        print("[INFO] Wykryta emocja AI:", emotion)
+        return emotion
+
+    except Exception as e:
+        print("[EXCEPTION] GROQ emotion:", e)
+        return None
+
+
+# -----------------------------------
+# 6. Emotki – mapowanie emocji na plik PNG
+# -----------------------------------
+def map_emotion_to_file(emotion: str | None) -> str:
+    """
+    Zwraca nazwę pliku PNG z katalogu emotki/ na podstawie emocji.
+    W razie problemu – error.png
+    """
+    if not emotion:
+        return "error.png"
+
+    emotion = emotion.strip().lower()
+
+    if emotion in ["radość", "radosc", "pozytywne", "szczęście", "szczescie"]:
+        return "twarz_radosc.png"
+    if emotion in ["smutek", "przygnębienie", "przygnebienie"]:
+        return "twarz_smutek.png"
+    if emotion in ["złość", "zlosc", "gniew"]:
+        return "twarz_zlosc.png"
+    if emotion in ["strach", "lęk", "lek"]:
+        return "twarz_lek.png"
+    if emotion in ["zaskoczenie", "zdziwienie"]:
+        return "twarz_zaskoczenie.png"
+    if emotion in ["nuda"]:
+        return "twarz_nuda.png"
+    if emotion in ["spokój", "spokoj", "neutralne", "neutralny"]:
+        return "twarz_spokoj.png"
+
+    return "twarz_spokoj.png"
+
+
+def load_emoticon_base64(filename: str) -> tuple[str, str]:
+    """
+    Wczytuje plik PNG z katalogu emotki/ i zwraca (base64, content_type).
+    W razie błędu – próbuje error.png, a jak i to się nie uda – zwraca puste.
+    """
+    base_path = os.path.join("emotki", filename)
+
+    def _read(path: str) -> str | None:
+        try:
+            with open(path, "rb") as f:
+                return base64.b64encode(f.read()).decode("ascii")
+        except Exception as e:
+            print(f"[ERROR] Nie udało się wczytać emotki {path}: {e}")
+            return None
+
+    b64 = _read(base_path)
+    if b64:
+        return b64, "image/png"
+
+    error_path = os.path.join("emotki", "error.png")
+    b64_err = _read(error_path)
+    if b64_err:
+        return b64_err, "image/png"
+
+    print("[ERROR] Nie udało się wczytać nawet error.png")
+    return "", "image/png"
+
+
+# -----------------------------------
+# 7. PDF – dobór i wczytywanie
+# -----------------------------------
+def map_emotion_to_pdf_file(emotion: str | None) -> str:
+    """
+    Zwraca nazwę pliku PDF z katalogu pdf/ na podstawie emocji.
+    W razie problemu – error.pdf
+    """
+    png_name = map_emotion_to_file(emotion)  # np. twarz_radosc.png
+    pdf_name = png_name.rsplit(".", 1)[0] + ".pdf"  # twarz_radosc.pdf
+    return pdf_name
+
+
+def load_pdf_base64(filename: str) -> tuple[str, str]:
+    """
+    Wczytuje plik PDF z katalogu pdf/ i zwraca (base64, content_type).
+    W razie błędu – próbuje error.pdf, a jak i to się nie uda – zwraca puste.
+    """
+    base_path = os.path.join("pdf", filename)
+
+    def _read(path: str) -> str | None:
+        try:
+            with open(path, "rb") as f:
+                return base64.b64encode(f.read()).decode("ascii")
+        except Exception as e:
+            print(f"[ERROR] Nie udało się wczytać PDF {path}: {e}")
+            return None
+
+    b64 = _read(base_path)
+    if b64:
+        return b64, "application/pdf"
+
+    error_path = os.path.join("pdf", "error.pdf")
+    b64_err = _read(error_path)
+    if b64_err:
+        return b64_err, "application/pdf"
+
+    print("[ERROR] Nie udało się wczytać nawet error.pdf")
+    return "", "application/pdf"
+
+
+# -----------------------------------
+# 8. Webhook
 # -----------------------------------
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -164,9 +320,17 @@ def webhook():
     sender = normalize_email(sender_raw)
     subject = data.get("subject", "") or ""
     body = data.get("body", "") or ""
+    body_lower = body.lower()
 
-    if sender not in ALLOWED_EMAILS:
-        print("[INFO] Nadawca nie jest na liście dozwolonych:", sender)
+    # Logika dostępu: ALLOWED_EMAILS lub SLOWO_KLUCZ w treści
+    allowed = False
+    if sender in ALLOWED_EMAILS:
+        allowed = True
+    elif SLOWO_KLUCZ and SLOWO_KLUCZ in body_lower:
+        allowed = True
+
+    if not allowed:
+        print("[INFO] Nadawca nie jest dozwolony i nie użył słowa kluczowego:", sender)
         return jsonify({"status": "ignored", "reason": "sender not allowed"}), 200
 
     if subject.lower().startswith("re:"):
@@ -188,8 +352,29 @@ def webhook():
             "reason": "no ai output",
         }), 200
 
+    # --- Emocja z AI (drugie zapytanie) ---
+    emotion = detect_emotion_ai(body)
+    emoticon_file = map_emotion_to_file(emotion)
+    emoticon_b64, emoticon_content_type = load_emoticon_base64(emoticon_file)
+
+    # --- PDF (jeśli w treści jest słowo "pdf") ---
+    has_pdf = "pdf" in body_lower
+    pdf_info = None
+    if has_pdf:
+        pdf_file = map_emotion_to_pdf_file(emotion)
+        pdf_b64, pdf_content_type = load_pdf_base64(pdf_file)
+        if pdf_b64:
+            pdf_info = {
+                "filename": pdf_file,
+                "content_type": pdf_content_type,
+                "base64": pdf_b64,
+            }
+
     # Zamiana nowych linii na <br>, aby Gmail zachował formatowanie
     safe_text_html = text.replace("\n", "<br>")
+
+    # CID dla emotki
+    emoticon_cid = "emotka1"
 
     # Stopka HTML
     footer_html = f"""
@@ -198,8 +383,8 @@ def webhook():
 ────────────────────────────────────────────<br>
 Ta wiadomość została wygenerowana automatycznie przez system: i<br>
 program Pawła :<br>
-<a href="https://github.com/legionowopawel/Autoresponder_Tresc_Obrazek_Zalacznik" style="color:#0b3d0b;">
-https://github.com/legionowopawel/Autoresponder_Tresc_Obrazek_Zalacznik
+<a href="https://github.com/legionowopawel/AutoResponder_AI_Text" style="color:#0b3d0b;">
+https://github.com/legionowopawel/AutoResponder_AI_Text
 </a><br>
 • Google Apps Script – obsługa skrzynki Gmail<br>
 • Render.com – backend API odpowiadający na wiadomości<br>
@@ -210,12 +395,12 @@ Kod źródłowy projektu dostępny tutaj:<br>
 https://github.com/legionowopawel/AutoIllustrator-Cloud2.git
 </a><br>
 ────────────────────────────────────────────<br>
-Program Pawła o nazwie: Autoresponder_Tresc_Obrazek_Zalacznik - Źródło<br>
+Program Pawła o nazwie: AutoResponder_AI_Text - Źródło<br>
 modelu tekstu: {text_source}     oraz model grafiki uzyty do obrazka: None<br>
 </div>
 """
 
-    # Finalny HTML
+    # Finalny HTML – z emotką inline (CID)
     final_reply_html = f"""
 <div style="font-family: Arial, sans-serif; font-size: 14px; color: #000000;">
   <p><b>Treść mojej odpowiedzi:</b><br>
@@ -223,16 +408,32 @@ modelu tekstu: {text_source}     oraz model grafiki uzyty do obrazka: None<br>
 
   <p><i>{safe_text_html}</i></p>
 
+  <p style="margin-top: 16px;">
+    <img src="cid:{emoticon_cid}" alt="emotka" style="width:64px;height:64px;">
+  </p>
+
   {footer_html}
 </div>
 """
 
-    return jsonify({
+    response_json = {
         "status": "ok",
         "has_text": True,
         "reply": final_reply_html,
         "text_source": text_source,
-    }), 200
+        "emotion": emotion,
+        "emoticon": {
+            "filename": emoticon_file,
+            "content_type": emoticon_content_type,
+            "base64": emoticon_b64,
+            "cid": emoticon_cid,
+        },
+    }
+
+    if pdf_info:
+        response_json["pdf"] = pdf_info
+
+    return jsonify(response_json), 200
 
 
 if __name__ == "__main__":
