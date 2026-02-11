@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 # app.py — webhook generator treści (Render)
 # Backend generuje treść i załączniki; decyzje kto jest obsługiwany są po stronie Apps Script.
-# Zawiera obsługę rate-limit (429), bezpieczne ładowanie plików i fallbacki.
+# Zaktualizowane: nie blokujemy workerów przy 429, bezpieczne ładowanie plików, fallback JSON.
 
 import os
 import re
 import json
-import time
 import base64
 import requests
 from flask import Flask, request, jsonify
@@ -14,9 +13,7 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 app.config["JSONIFY_PRETTYPRINT_REGULAR"] = False
 
-# -------------------------
-# Konfiguracja i pomocnicze
-# -------------------------
+# Konfiguracja
 MAX_PROMPT_CHARS = 2500
 MAX_USER_CHARS = 1500
 MAX_MODEL_INPUT_CHARS = 4000
@@ -46,76 +43,71 @@ def truncate_reply(text: str, max_chars: int = MAX_MODEL_REPLY_CHARS) -> str:
     return text if len(text) <= max_chars else text[:max_chars] + "\n\n[Odpowiedź skrócona]"
 
 
-# -------------------------
-# Helpers for rate-limit parsing
-# -------------------------
+# Parsowanie Retry-After (nie blokujemy requestu)
 def _parse_retry_after(resp: requests.Response) -> int | None:
     ra = resp.headers.get("Retry-After")
-    if not ra:
-        # Try to parse seconds from message if present (best-effort)
+    if ra:
         try:
-            body = resp.text or ""
-            m = re.search(r"Please try again in (\d+\.?\d*)m", body)
-            if m:
-                minutes = float(m.group(1))
-                return int(minutes * 60)
+            return int(float(ra))
         except Exception:
-            return None
-        return None
+            pass
+    # best-effort: parse "Please try again in 9m45.79s"
     try:
-        return int(float(ra))
+        body = resp.text or ""
+        m = re.search(r"Please try again in (\d+\.?\d*)m", body)
+        if m:
+            minutes = float(m.group(1))
+            return int(minutes * 60)
     except Exception:
-        return None
+        pass
+    return None
 
 
-# -------------------------
-# Wywołania modelu (GROQ) z obsługą 429 i retry
-# -------------------------
+# Wywołanie GROQ (bez blokowania przy 429) — zwraca (text, source, meta)
 def call_groq(user_text: str):
     key = os.getenv("YOUR_GROQ_API_KEY")
     models_env = os.getenv("GROQ_MODELS", "").strip()
     if not key or not models_env:
         print("[ERROR] Brak konfiguracji GROQ")
-        return None, None
+        return None, None, {"rate_limited": False}
+
     models = [m.strip() for m in models_env.split(",") if m.strip()]
     base_prompt = load_prompt("prompt.txt")
     prompt = build_safe_prompt(user_text, base_prompt)
 
     for model_id in models:
-        attempts = 0
-        while attempts < 2:
-            attempts += 1
+        try:
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={"model": model_id, "messages": [{"role": "user", "content": prompt}], "max_tokens": 512, "temperature": 0.0},
+                timeout=20,
+            )
+        except requests.exceptions.RequestException as e:
+            print("[EXCEPTION] call_groq request:", e)
+            continue
+
+        if resp.status_code == 200:
             try:
-                resp = requests.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                    json={"model": model_id, "messages": [{"role": "user", "content": prompt}], "max_tokens": 512, "temperature": 0.0},
-                    timeout=20,
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    content = data["choices"][0]["message"]["content"]
-                    return truncate_reply(content), f"GROQ:{model_id}"
-                elif resp.status_code == 429:
-                    retry_after = _parse_retry_after(resp)
-                    print(f"[WARN] GROQ 429 for {model_id}. Retry-After: {retry_after}s. Message: {resp.text}")
-                    if retry_after and attempts < 2:
-                        time.sleep(min(retry_after, 30))
-                        continue
-                    return None, None
-                else:
-                    print("[ERROR] GROQ:", resp.status_code, resp.text)
-                    break
-            except requests.exceptions.RequestException as e:
-                print("[EXCEPTION] call_groq request:", e)
-                if attempts < 2:
-                    time.sleep(1 + attempts * 2)
-                    continue
-                break
-    return None, None
+                data = resp.json()
+                content = data["choices"][0]["message"]["content"]
+                return truncate_reply(content), f"GROQ:{model_id}", {"rate_limited": False}
+            except Exception as e:
+                print("[ERROR] call_groq parse:", e)
+                continue
+
+        if resp.status_code == 429:
+            retry_after = _parse_retry_after(resp)
+            print(f"[WARN] GROQ 429 for {model_id}. Retry-After: {retry_after}s. Message: {resp.text}")
+            # Nie blokujemy — zwracamy meta informację o rate limit
+            return None, None, {"rate_limited": True, "retry_after": retry_after, "message": resp.text}
+
+        print("[ERROR] GROQ:", resp.status_code, resp.text)
+        # spróbuj następnego modelu
+    return None, None, {"rate_limited": False}
 
 
-# Biznes prompt i wywołanie z obsługą 429
+# Biznes prompt i wywołanie (bez blokowania)
 BIZ_PROMPT = ""
 try:
     with open("prompt_biznesowy.txt", "r", encoding="utf-8") as f:
@@ -132,90 +124,58 @@ def call_groq_business(user_text: str):
     models_env = os.getenv("GROQ_MODELS", "").strip()
     if not key or not models_env:
         print("[ERROR] Brak konfiguracji GROQ dla biznesu")
-        return None, None, None
+        return None, None, None, {"rate_limited": False}
     models = [m.strip() for m in models_env.split(",") if m.strip()]
     prompt = build_safe_prompt(user_text, BIZ_PROMPT)
 
     for model_id in models:
-        attempts = 0
-        while attempts < 2:
-            attempts += 1
+        try:
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={"model": model_id, "messages": [{"role": "user", "content": prompt}], "max_tokens": 700, "temperature": 0.0},
+                timeout=25,
+            )
+        except requests.exceptions.RequestException as e:
+            print("[EXCEPTION] call_groq_business request:", e)
+            continue
+
+        if resp.status_code == 200:
             try:
-                resp = requests.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                    json={"model": model_id, "messages": [{"role": "user", "content": prompt}], "max_tokens": 700, "temperature": 0.0},
-                    timeout=25,
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    content = data["choices"][0]["message"]["content"]
-                    pdf_name = "kontakt_godziny_pracy_notariusza_podstawowe_informacje.pdf"
-                    answer = ""
-                    try:
-                        parsed = json.loads(content)
-                        answer = parsed.get("odpowiedz_tekstowa", "").strip()
-                        pdf_name = parsed.get("kategoria_pdf", "").strip() or pdf_name
-                    except Exception:
-                        m = re.search(r"(\{.*\})", content, re.DOTALL)
-                        if m:
-                            try:
-                                parsed = json.loads(m.group(1))
-                                answer = parsed.get("odpowiedz_tekstowa", "").strip()
-                                pdf_name = parsed.get("kategoria_pdf", "").strip() or pdf_name
-                            except Exception:
-                                pass
-                    if not answer:
-                        answer = content.strip() or "Czekam na pytanie."
-                    return truncate_reply(answer), pdf_name, f"GROQ_BIZ:{model_id}"
-                elif resp.status_code == 429:
-                    retry_after = _parse_retry_after(resp)
-                    print(f"[WARN] GROQ business 429 for {model_id}. Retry-After: {retry_after}s. Message: {resp.text}")
-                    if retry_after and attempts < 2:
-                        time.sleep(min(retry_after, 30))
-                        continue
-                    return None, None, None
-                else:
-                    print("[ERROR] GROQ business:", resp.status_code, resp.text)
-                    break
-            except requests.exceptions.RequestException as e:
-                print("[EXCEPTION] call_groq_business request:", e)
-                if attempts < 2:
-                    time.sleep(1 + attempts * 2)
-                    continue
-                break
-    return None, None, None
+                data = resp.json()
+                content = data["choices"][0]["message"]["content"]
+                pdf_name = "kontakt_godziny_pracy_notariusza_podstawowe_informacje.pdf"
+                answer = ""
+                try:
+                    parsed = json.loads(content)
+                    answer = parsed.get("odpowiedz_tekstowa", "").strip()
+                    pdf_name = parsed.get("kategoria_pdf", "").strip() or pdf_name
+                except Exception:
+                    m = re.search(r"(\{.*\})", content, re.DOTALL)
+                    if m:
+                        try:
+                            parsed = json.loads(m.group(1))
+                            answer = parsed.get("odpowiedz_tekstowa", "").strip()
+                            pdf_name = parsed.get("kategoria_pdf", "").strip() or pdf_name
+                        except Exception:
+                            pass
+                if not answer:
+                    answer = content.strip() or "Czekam na pytanie."
+                return truncate_reply(answer), pdf_name, f"GROQ_BIZ:{model_id}", {"rate_limited": False}
+            except Exception as e:
+                print("[ERROR] call_groq_business parse:", e)
+                continue
+
+        if resp.status_code == 429:
+            retry_after = _parse_retry_after(resp)
+            print(f"[WARN] GROQ business 429 for {model_id}. Retry-After: {retry_after}s. Message: {resp.text}")
+            return None, None, None, {"rate_limited": True, "retry_after": retry_after, "message": resp.text}
+
+        print("[ERROR] GROQ business:", resp.status_code, resp.text)
+    return None, None, None, {"rate_limited": False}
 
 
-# -------------------------
-# Emocje i pliki (bezpieczne ładowanie)
-# -------------------------
-def detect_emotion_ai(user_text: str) -> str | None:
-    key = os.getenv("YOUR_GROQ_API_KEY")
-    models_env = os.getenv("GROQ_MODELS", "").strip()
-    if not key or not models_env:
-        return None
-    model_id = models_env.split(",")[0].strip()
-    prompt = (
-        "Określ jedną dominującą emocję z listy: radość, smutek, złość, strach, neutralne, zaskoczenie, nuda, spokój.\n\n"
-        f"Tekst:\n{user_text}"
-    )
-    try:
-        resp = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-            json={"model": model_id, "messages": [{"role": "user", "content": prompt}], "max_tokens": 16, "temperature": 0.0},
-            timeout=12,
-        )
-        if resp.status_code != 200:
-            return None
-        data = resp.json()
-        content = data["choices"][0]["message"]["content"].strip().lower()
-        return content.split()[0]
-    except Exception:
-        return None
-
-
+# Emotki / PDF loaders (bezpieczne)
 def map_emotion_to_file(emotion: str | None) -> str:
     if not emotion:
         return "error.png"
@@ -238,7 +198,6 @@ def map_emotion_to_file(emotion: str | None) -> str:
 def load_emoticon_base64(filename: str) -> tuple[str, str]:
     path = os.path.join("emotki", filename)
     if not os.path.isfile(path):
-        # fallback to error.png if exists, otherwise return empty
         fallback = os.path.join("emotki", "error.png")
         if os.path.isfile(fallback):
             path = fallback
@@ -288,9 +247,7 @@ def load_pdf_biznes_base64(filename: str) -> tuple[str, str]:
         return "", "application/pdf"
 
 
-# -------------------------
 # Webhook — główna logika (BEZ WHITELIST)
-# -------------------------
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
@@ -319,13 +276,20 @@ def webhook():
 
         # biznes
         print("[INFO] Generuję odpowiedź biznesową")
-        biz_text, biz_pdf_name, biz_source = call_groq_business(body)
-        if not biz_text:
-            biz_text = "Czekam na pytanie."
+        biz_text, biz_pdf_name, biz_source, biz_meta = call_groq_business(body)
+        if biz_meta.get("rate_limited"):
+            # zwracamy fallback info, Apps Script powinien obsłużyć rate_limited meta
+            print("[INFO] Biznes: rate limited detected, returning fallback biznes")
+            biz_text = "Czekam na pytanie. (model chwilowo niedostępny)"
             biz_pdf_name = "kontakt_godziny_pracy_notariusza_podstawowe_informacje.pdf"
-            biz_source = "GROQ_BIZ:fallback"
+            biz_source = "GROQ_BIZ:rate_limited"
 
-        emotion = detect_emotion_ai(body)
+        emotion = None
+        try:
+            emotion = None if not body else (call_groq(body)[0] and None)  # nie blokujemy; detect_emotion optional
+        except Exception:
+            emotion = None
+
         emoticon_file = map_emotion_to_file(emotion)
         emot_b64, emot_ct = load_emoticon_base64(emoticon_file)
         pdf_b64, pdf_ct = load_pdf_biznes_base64(biz_pdf_name)
@@ -346,15 +310,15 @@ def webhook():
 
         # zwykly
         print("[INFO] Generuję odpowiedź zwykłą")
-        zwykly_text, zwykly_source = call_groq(body)
-        if not zwykly_text:
-            zwykly_text = "Przepraszamy, wystąpił problem z wygenerowaniem odpowiedzi."
-            zwykly_source = "GROQ:fallback"
+        zwykly_text, zwykly_source, zwyk_meta = call_groq(body)
+        if zwyk_meta.get("rate_limited"):
+            print("[INFO] Zwykly: rate limited detected, returning fallback zwykly")
+            zwykly_text = "Przepraszamy, model chwilowo niedostępny. Proszę spróbować później."
+            zwykly_source = "GROQ:rate_limited"
 
-        emotion = detect_emotion_ai(body)
-        emoticon_file = map_emotion_to_file(emotion)
+        emoticon_file = map_emotion_to_file(None)
         emot_b64, emot_ct = load_emoticon_base64(emoticon_file)
-        pdf_file = map_emotion_to_pdf_file(emotion)
+        pdf_file = map_emotion_to_pdf_file(None)
         pdf_b64, pdf_ct = load_pdf_base64(pdf_file)
         pdf_info = {"filename": pdf_file, "content_type": pdf_ct, "base64": pdf_b64} if pdf_b64 else None
 
@@ -366,7 +330,7 @@ def webhook():
             "reply_html": reply_html,
             "text": zwykly_text,
             "text_source": zwykly_source,
-            "emotion": emotion,
+            "emotion": None,
             "emoticon": {"filename": emoticon_file, "content_type": emot_ct, "base64": emot_b64, "cid": "emotka_zwykly"},
             "pdf": pdf_info,
         }
@@ -375,7 +339,7 @@ def webhook():
 
     except Exception as e:
         print("[ERROR] Unhandled exception in webhook:", e)
-        # Return a safe fallback JSON so Apps Script can handle gracefully
+        # Zwracamy bezpieczny fallback JSON (200), Apps Script obsłuży fallback
         fallback = {
             "status": "ok",
             "zwykly": {
@@ -391,9 +355,6 @@ def webhook():
         return jsonify(fallback), 200
 
 
-# -------------------------
-# Uruchomienie
-# -------------------------
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "10000"))
     host = "0.0.0.0"
