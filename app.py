@@ -471,7 +471,7 @@ def webhook():
 
     # Brak na obu listach i brak słowa kluczowego -> ignorujemy
     if not allowed_sender and not business_sender and not has_keyword:
-        print("[INFO] Nadawca nie jest dozwolony i nie użył słowa kluczowego:", sender)
+        print("[INFO] Nadawca nie jest dozwolony LUB nie użył słowa kluczowego:", sender)
         return jsonify({"status": "ignored", "reason": "sender not allowed"}), 200
 
     if subject.lower().startswith("re:"):
@@ -624,6 +624,8 @@ Ta wiadomość została wygenerowana automatycznie przez system Pawła.<br>
 • Google Apps Script – obsługa skrzynki Gmail<br>
 • Render.com – backend API<br>
 • Groq – modele AI<br>
+• https://github.com/legionowopawel/AutoResponder_AI_Text.git<br>
+
 ────────────────────────────────────────────<br>
 model tekstu: {text_source}<br>
 </div>
