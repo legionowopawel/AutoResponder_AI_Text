@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # app.py — webhook generator treści (Render)
-# Uwaga: nie umieszczaj sekretów w tym pliku. Wszystkie klucze i listy emaili
-# powinny być w zmiennych środowiskowych po stronie Apps Script.
+# Backend generuje treść i załączniki; decyzje kto jest obsługiwany są po stronie Apps Script.
 
 import os
 import re
@@ -13,74 +12,39 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 app.config["JSONIFY_PRETTYPRINT_REGULAR"] = False
 
-# -------------------------
-# Konfiguracja i pomocnicze
-# -------------------------
 MAX_PROMPT_CHARS = 2500
 MAX_USER_CHARS = 1500
 MAX_MODEL_INPUT_CHARS = 4000
 MAX_MODEL_REPLY_CHARS = 1500
 
-def normalize_email(email: str) -> str:
-    email = (email or "").lower().strip()
-    if "<" in email and ">" in email:
-        start = email.find("<") + 1
-        end = email.find(">")
-        email = email[start:end].strip()
-    if email.endswith("@gmail.com"):
-        try:
-            local, domain = email.split("@", 1)
-            local = local.replace(".", "")
-            local = local.split("+", 1)[0]
-            return f"{local}@{domain}"
-        except Exception:
-            return email
-    return email
-
 def load_prompt(filename: str = "prompt.txt"):
     try:
         with open(filename, "r", encoding="utf-8") as f:
-            txt = f.read()
-            return txt[:MAX_PROMPT_CHARS]
-    except FileNotFoundError:
-        print(f"[ERROR] Brak pliku {filename}")
+            return f.read()[:MAX_PROMPT_CHARS]
+    except Exception:
         return "{{USER_TEXT}}"
 
 def summarize_and_truncate(text: str, max_chars: int = MAX_USER_CHARS) -> str:
     text = (text or "").strip()
-    if len(text) <= max_chars:
-        return text
-    return text[:max_chars]
+    return text if len(text) <= max_chars else text[:max_chars]
 
 def build_safe_prompt(user_text: str, base_prompt: str) -> str:
     safe_user_text = summarize_and_truncate(user_text, MAX_USER_CHARS)
-    prompt = base_prompt.replace("{{USER_TEXT}}", safe_user_text)
-    return prompt[:MAX_MODEL_INPUT_CHARS]
+    return (base_prompt.replace("{{USER_TEXT}}", safe_user_text))[:MAX_MODEL_INPUT_CHARS]
 
 def truncate_reply(text: str, max_chars: int = MAX_MODEL_REPLY_CHARS) -> str:
     text = (text or "").strip()
-    if len(text) <= max_chars:
-        return text
-    return text[:max_chars] + "\n\n[Odpowiedź skrócona]"
+    return text if len(text) <= max_chars else text[:max_chars] + "\n\n[Odpowiedź skrócona]"
 
-# -------------------------
-# Wywołania modelu (GROQ)
-# -------------------------
 def call_groq(user_text: str):
     key = os.getenv("YOUR_GROQ_API_KEY")
-    if not key:
-        print("[ERROR] Brak klucza YOUR_GROQ_API_KEY")
-        return None, None
-
     models_env = os.getenv("GROQ_MODELS", "").strip()
-    if not models_env:
-        print("[ERROR] Brak GROQ_MODELS")
+    if not key or not models_env:
+        print("[ERROR] Brak konfiguracji GROQ")
         return None, None
-
     models = [m.strip() for m in models_env.split(",") if m.strip()]
     base_prompt = load_prompt("prompt.txt")
     prompt = build_safe_prompt(user_text, base_prompt)
-
     for model_id in models:
         try:
             resp = requests.post(
@@ -100,9 +64,7 @@ def call_groq(user_text: str):
             continue
     return None, None
 
-# -------------------------
-# Biznes prompt i parsowanie
-# -------------------------
+# Biznes prompt
 BIZ_PROMPT = ""
 try:
     with open("prompt_biznesowy.txt", "r", encoding="utf-8") as f:
@@ -115,18 +77,12 @@ except Exception:
 
 def call_groq_business(user_text: str):
     key = os.getenv("YOUR_GROQ_API_KEY")
-    if not key:
-        print("[ERROR] Brak klucza YOUR_GROQ_API_KEY dla biznesu")
-        return None, None, None
-
     models_env = os.getenv("GROQ_MODELS", "").strip()
-    if not models_env:
-        print("[ERROR] Brak GROQ_MODELS dla biznesu")
+    if not key or not models_env:
+        print("[ERROR] Brak konfiguracji GROQ dla biznesu")
         return None, None, None
-
     models = [m.strip() for m in models_env.split(",") if m.strip()]
     prompt = build_safe_prompt(user_text, BIZ_PROMPT)
-
     for model_id in models:
         try:
             resp = requests.post(
@@ -138,13 +94,10 @@ def call_groq_business(user_text: str):
             if resp.status_code != 200:
                 print("[ERROR] GROQ business:", resp.status_code, resp.text)
                 continue
-
             data = resp.json()
             content = data["choices"][0]["message"]["content"]
-
             pdf_name = "kontakt_godziny_pracy_notariusza_podstawowe_informacje.pdf"
             answer = ""
-
             try:
                 parsed = json.loads(content)
                 answer = parsed.get("odpowiedz_tekstowa", "").strip()
@@ -158,24 +111,15 @@ def call_groq_business(user_text: str):
                         pdf_name = parsed.get("kategoria_pdf", "").strip() or pdf_name
                     except Exception:
                         pass
-
             if not answer:
                 answer = content.strip() or "Czekam na pytanie."
-
-            if not pdf_name:
-                pdf_name = "kontakt_godziny_pracy_notariusza_podstawowe_informacje.pdf"
-
             return truncate_reply(answer), pdf_name, f"GROQ_BIZ:{model_id}"
-
         except Exception as e:
             print("[EXCEPTION] call_groq_business:", e)
             continue
-
     return None, None, None
 
-# -------------------------
-# Emocje i pliki
-# -------------------------
+# Emotki / PDF loaders (jak wcześniej)
 def detect_emotion_ai(user_text: str) -> str | None:
     key = os.getenv("YOUR_GROQ_API_KEY")
     models_env = os.getenv("GROQ_MODELS", "").strip()
@@ -262,9 +206,6 @@ def load_pdf_biznes_base64(filename: str) -> tuple[str, str]:
         except Exception:
             return "", "application/pdf"
 
-# -------------------------
-# Webhook — główna logika (BEZ WHITELIST)
-# -------------------------
 @app.route("/webhook", methods=["POST"])
 def webhook():
     secret_header = request.headers.get("X-Webhook-Secret")
@@ -275,14 +216,11 @@ def webhook():
 
     data = request.json or {}
     sender_raw = (data.get("from") or data.get("sender") or "").strip()
-    sender = normalize_email(sender_raw)
     subject = (data.get("subject") or "").strip()
     body = (data.get("body") or "").strip()
-    body_lower = body.lower()
 
-    print(f"[DEBUG] Nadawca raw: {sender_raw} normalized: {sender}")
+    print(f"[DEBUG] Received webhook from: {sender_raw} subject: {subject} body_len: {len(body)}")
 
-    # ignoruj odpowiedzi
     if subject.lower().startswith("re:"):
         print("[INFO] Ignoruję odpowiedź (RE:)", subject)
         return jsonify({"status": "ignored", "reason": "reply detected"}), 200
@@ -293,8 +231,8 @@ def webhook():
 
     result = {"status": "ok", "zwykly": None, "biznes": None}
 
-    # generuj odpowiedź biznesową (zawsze jeśli body istnieje)
-    print("[INFO] Generuję odpowiedź biznesową dla:", sender)
+    # biznes
+    print("[INFO] Generuję odpowiedź biznesową")
     biz_text, biz_pdf_name, biz_source = call_groq_business(body)
     if not biz_text:
         biz_text = "Czekam na pytanie."
@@ -305,26 +243,11 @@ def webhook():
     emoticon_file = map_emotion_to_file(emotion)
     emot_b64, emot_ct = load_emoticon_base64(emoticon_file)
     pdf_b64, pdf_ct = load_pdf_biznes_base64(biz_pdf_name)
-    pdf_info = None
-    if pdf_b64:
-        pdf_info = {"filename": biz_pdf_name, "content_type": pdf_ct, "base64": pdf_b64}
-        print("[PDF-BIZ] Dołączono:", biz_pdf_name)
-    else:
-        print("[PDF-BIZ] Brak PDF biznesowego:", biz_pdf_name)
+    pdf_info = {"filename": biz_pdf_name, "content_type": pdf_ct, "base64": pdf_b64} if pdf_b64 else None
 
     safe_html = biz_text.replace("\n", "<br>")
-    footer_html = (
-        "<hr>"
-        "<div style='font-size:11px;color:#0b3d0b;font-family:Georgia,Times New Roman,serif;line-height:1.4;'>"
-        "────────────────────────────────────────────<br>"
-        "Ta wiadomość została wygenerowana automatycznie przez system kancelarii notarialnej.<br>"
-        "To odpowiedź automatyczna, nie stanowi porady prawnej ani opinii notarialnej.<br>"
-        "────────────────────────────────────────────<br>"
-        f"model tekstu: {biz_source}<br>"
-        "</div>"
-    )
-
-    reply_html = f"<div style='font-family:Arial,sans-serif;font-size:14px;color:#000'>{safe_html}<br><img src='cid:emotka_biz' style='width:64px;height:64px;'><br>{footer_html}</div>"
+    footer_html = f"<hr><div style='font-size:11px;color:#0b3d0b;'>model tekstu: {biz_source}</div>"
+    reply_html = f"<div>{safe_html}<br><img src='cid:emotka_biz' style='width:64px;height:64px;'><br>{footer_html}</div>"
 
     result["biznes"] = {
         "reply_html": reply_html,
@@ -335,8 +258,8 @@ def webhook():
         "pdf": pdf_info,
     }
 
-    # generuj odpowiedź zwykłą (zawsze jeśli body istnieje)
-    print("[INFO] Generuję odpowiedź zwykłą dla:", sender)
+    # zwykly
+    print("[INFO] Generuję odpowiedź zwykłą")
     zwykly_text, zwykly_source = call_groq(body)
     if not zwykly_text:
         zwykly_text = "Przepraszamy, wystąpił problem z wygenerowaniem odpowiedzi."
@@ -345,30 +268,13 @@ def webhook():
     emotion = detect_emotion_ai(body)
     emoticon_file = map_emotion_to_file(emotion)
     emot_b64, emot_ct = load_emoticon_base64(emoticon_file)
-
-    pdf_info = None
-    # backend może zawsze dołączać pdf zwykły (skrypt zdecyduje czy wysłać)
     pdf_file = map_emotion_to_pdf_file(emotion)
     pdf_b64, pdf_ct = load_pdf_base64(pdf_file)
-    if pdf_b64:
-        pdf_info = {"filename": pdf_file, "content_type": pdf_ct, "base64": pdf_b64}
-        print("[PDF] Dołączono:", pdf_file)
-    else:
-        print("[PDF] Brak PDF zwykłego:", pdf_file)
+    pdf_info = {"filename": pdf_file, "content_type": pdf_ct, "base64": pdf_b64} if pdf_b64 else None
 
     safe_html = zwykly_text.replace("\n", "<br>")
-    footer_html = (
-        "<hr>"
-        "<div style='font-size:11px;color:#0b3d0b;font-family:Georgia,Times New Roman,serif;line-height:1.4;'>"
-        "────────────────────────────────────────────<br>"
-        "Ta wiadomość została wygenerowana automatycznie przez system Pawła.<br>"
-        "To odpowiedź automatyczna, nie stanowi porady prawnej ani opinii notarialnej.<br>"
-        "────────────────────────────────────────────<br>"
-        f"model tekstu: {zwykly_source}<br>"
-        "</div>"
-    )
-
-    reply_html = f"<div style='font-family:Arial,sans-serif;font-size:14px;color:#000'>{safe_html}<br><img src='cid:emotka_zwykly' style='width:64px;height:64px;'><br>{footer_html}</div>"
+    footer_html = f"<hr><div style='font-size:11px;color:#0b3d0b;'>model tekstu: {zwykly_source}</div>"
+    reply_html = f"<div>{safe_html}<br><img src='cid:emotka_zwykly' style='width:64px;height:64px;'><br>{footer_html}</div>"
 
     result["zwykly"] = {
         "reply_html": reply_html,
@@ -381,9 +287,6 @@ def webhook():
 
     return jsonify(result), 200
 
-# -------------------------
-# Uruchomienie
-# -------------------------
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "10000"))
     host = "0.0.0.0"
