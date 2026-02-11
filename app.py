@@ -188,8 +188,10 @@ def webhook():
             "reason": "no ai output",
         }), 200
 
-    # Budujemy HTML odpowiedzi
-    # Nagłówek pogrubiony, treść AI kursywą, stopka mała, ciemnozielona, Georgia
+    # Zamiana nowych linii na <br>, aby Gmail zachował formatowanie
+    safe_text_html = text.replace("\n", "<br>")
+
+    # Stopka HTML
     footer_html = f"""
 <hr>
 <div style="font-size: 11px; color: #0b3d0b; font-family: Georgia, 'Times New Roman', serif; line-height: 1.4;">
@@ -213,10 +215,8 @@ modelu tekstu: {text_source}     oraz model grafiki uzyty do obrazka: None<br>
 </div>
 """
 
-# Zamiana nowych linii na <br>, aby Gmail zachował formatowanie
-safe_text_html = text.replace("\n", "<br>")
-
-final_reply_html = f"""
+    # Finalny HTML
+    final_reply_html = f"""
 <div style="font-family: Arial, sans-serif; font-size: 14px; color: #000000;">
   <p><b>Treść mojej odpowiedzi:</b><br>
   <b>Na podstawie tego, co otrzymałem, przygotowałem odpowiedź:</b></p>
@@ -226,7 +226,6 @@ final_reply_html = f"""
   {footer_html}
 </div>
 """
-
 
     return jsonify({
         "status": "ok",
