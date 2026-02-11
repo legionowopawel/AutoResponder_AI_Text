@@ -1,4 +1,9 @@
-Flask==2.3.3
-requests==2.31.0
-gunicorn==20.1.0
-python-dotenv==1.0.0
+Flask>=2.2.5
+gunicorn>=20.1.0
+requests>=2.31.0
+setuptools>=67.0.0
+python-dotenv>=1.0.0
+
+# Opcjonalne (odkomentuj jeśli używasz tych usług w backendzie)
+# replicate>=0.9.0
+# stability-sdk>=0.10.0
