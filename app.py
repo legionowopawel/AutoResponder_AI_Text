@@ -147,18 +147,13 @@ def call_groq(user_text):
 # 5. AI – rozpoznawanie emocji (drugie zapytanie)
 # -----------------------------------
 def detect_emotion_ai(user_text: str) -> str | None:
-    """
-    Zwraca jedną emocję z listy:
-    radość, smutek, złość, strach, neutralne, zaskoczenie, nuda, spokój
-    albo None, jeśli się nie uda.
-    """
     key = os.getenv("YOUR_GROQ_API_KEY")
     models_env = os.getenv("GROQ_MODELS", "").strip()
     if not key or not models_env:
         print("[ERROR] Brak konfiguracji GROQ do rozpoznawania emocji")
         return None
 
-    model_id = models_env.split(",")[0].strip()  # pierwszy model z listy
+    model_id = models_env.split(",")[0].strip()
 
     prompt = (
         "Na podstawie poniższego tekstu określ jedną dominującą emocję z listy:\n"
@@ -201,10 +196,6 @@ def detect_emotion_ai(user_text: str) -> str | None:
 # 6. Emotki – mapowanie emocji na plik PNG
 # -----------------------------------
 def map_emotion_to_file(emotion: str | None) -> str:
-    """
-    Zwraca nazwę pliku PNG z katalogu emotki/ na podstawie emocji.
-    W razie problemu – error.png
-    """
     if not emotion:
         return "error.png"
 
@@ -229,10 +220,6 @@ def map_emotion_to_file(emotion: str | None) -> str:
 
 
 def load_emoticon_base64(filename: str) -> tuple[str, str]:
-    """
-    Wczytuje plik PNG z katalogu emotki/ i zwraca (base64, content_type).
-    W razie błędu – próbuje error.png, a jak i to się nie uda – zwraca puste.
-    """
     base_path = os.path.join("emotki", filename)
 
     def _read(path: str) -> str | None:
@@ -260,20 +247,12 @@ def load_emoticon_base64(filename: str) -> tuple[str, str]:
 # 7. PDF – dobór i wczytywanie
 # -----------------------------------
 def map_emotion_to_pdf_file(emotion: str | None) -> str:
-    """
-    Zwraca nazwę pliku PDF z katalogu pdf/ na podstawie emocji.
-    W razie problemu – error.pdf
-    """
-    png_name = map_emotion_to_file(emotion)  # np. twarz_radosc.png
-    pdf_name = png_name.rsplit(".", 1)[0] + ".pdf"  # twarz_radosc.pdf
+    png_name = map_emotion_to_file(emotion)
+    pdf_name = png_name.rsplit(".", 1)[0] + ".pdf"
     return pdf_name
 
 
 def load_pdf_base64(filename: str) -> tuple[str, str]:
-    """
-    Wczytuje plik PDF z katalogu pdf/ i zwraca (base64, content_type).
-    W razie błędu – próbuje error.pdf, a jak i to się nie uda – zwraca puste.
-    """
     base_path = os.path.join("pdf", filename)
 
     def _read(path: str) -> str | None:
@@ -302,14 +281,12 @@ def load_pdf_base64(filename: str) -> tuple[str, str]:
 # -----------------------------------
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    # Prosta ochrona – sekret w nagłówku
     secret_header = request.headers.get("X-Webhook-Secret")
     expected_secret = os.getenv("WEBHOOK_SECRET", "")
     if not expected_secret or secret_header != expected_secret:
         print("[WARN] Nieprawidłowy lub brak X-Webhook-Secret")
         return jsonify({"error": "unauthorized"}), 401
 
-    # Opcjonalna ochrona przed zbyt dużym payloadem
     if request.content_length and request.content_length > 20000:
         print("[WARN] Payload too large:", request.content_length)
         return jsonify({"error": "payload too large"}), 413
@@ -322,14 +299,10 @@ def webhook():
     body = data.get("body", "") or ""
     body_lower = body.lower()
 
-    # Logika dostępu: ALLOWED_EMAILS lub SLOWO_KLUCZ w treści
-    allowed = False
-    if sender in ALLOWED_EMAILS:
-        allowed = True
-    elif SLOWO_KLUCZ and SLOWO_KLUCZ in body_lower:
-        allowed = True
+    allowed_sender = sender in ALLOWED_EMAILS
+    has_keyword = bool(SLOWO_KLUCZ) and (SLOWO_KLUCZ in body_lower)
 
-    if not allowed:
+    if not allowed_sender and not has_keyword:
         print("[INFO] Nadawca nie jest dozwolony i nie użył słowa kluczowego:", sender)
         return jsonify({"status": "ignored", "reason": "sender not allowed"}), 200
 
@@ -341,7 +314,6 @@ def webhook():
         print("[INFO] Pusta treść wiadomości – ignoruję")
         return jsonify({"status": "ignored", "reason": "empty body"}), 200
 
-    # --- Tekst z GROQ ---
     text, text_source = call_groq(body)
     has_text = bool(text)
 
@@ -352,15 +324,20 @@ def webhook():
             "reason": "no ai output",
         }), 200
 
-    # --- Emocja z AI (drugie zapytanie) ---
     emotion = detect_emotion_ai(body)
     emoticon_file = map_emotion_to_file(emotion)
     emoticon_b64, emoticon_content_type = load_emoticon_base64(emoticon_file)
 
-    # --- PDF (jeśli w treści jest słowo "pdf") ---
-    has_pdf = "pdf" in body_lower
+    pdf_needed = False
+    if allowed_sender:
+        if "pdf" in body_lower or has_keyword:
+            pdf_needed = True
+    else:
+        if has_keyword:
+            pdf_needed = True
+
     pdf_info = None
-    if has_pdf:
+    if pdf_needed:
         pdf_file = map_emotion_to_pdf_file(emotion)
         pdf_b64, pdf_content_type = load_pdf_base64(pdf_file)
         if pdf_b64:
@@ -370,13 +347,9 @@ def webhook():
                 "base64": pdf_b64,
             }
 
-    # Zamiana nowych linii na <br>, aby Gmail zachował formatowanie
     safe_text_html = text.replace("\n", "<br>")
-
-    # CID dla emotki
     emoticon_cid = "emotka1"
 
-    # Stopka HTML
     footer_html = f"""
 <hr>
 <div style="font-size: 11px; color: #0b3d0b; font-family: Georgia, 'Times New Roman', serif; line-height: 1.4;">
@@ -391,7 +364,7 @@ https://github.com/legionowopawel/AutoResponder_AI_Text
 • Groq – modele AI generujące treść odpowiedzi<br>
 <br>
 Kod źródłowy projektu dostępny tutaj:<br>
-<a href="https://github.com/legionowopawel/AutoIllustrator-Cloud2.git" style="color:#0b3d0b;">
+<a href="https://github.com/legionowopawel/AutoResponder_AI_Text.git" style="color:#0b3d0b;">
 https://github.com/legionowopawel/AutoIllustrator-Cloud2.git
 </a><br>
 ────────────────────────────────────────────<br>
@@ -400,7 +373,6 @@ modelu tekstu: {text_source}     oraz model grafiki uzyty do obrazka: None<br>
 </div>
 """
 
-    # Finalny HTML – z emotką inline (CID)
     final_reply_html = f"""
 <div style="font-family: Arial, sans-serif; font-size: 14px; color: #000000;">
   <p><b>Treść mojej odpowiedzi:</b><br>
