@@ -144,7 +144,7 @@ def call_groq(user_text):
 
 
 # -----------------------------------
-# 5. AI – rozpoznawanie emocji
+# 5. AI – rozpoznawanie emocji (drugie zapytanie)
 # -----------------------------------
 def detect_emotion_ai(user_text: str) -> str | None:
     key = os.getenv("YOUR_GROQ_API_KEY")
@@ -193,7 +193,7 @@ def detect_emotion_ai(user_text: str) -> str | None:
 
 
 # -----------------------------------
-# 6. Emotki
+# 6. Emotki – mapowanie emocji na plik PNG
 # -----------------------------------
 def map_emotion_to_file(emotion: str | None) -> str:
     if not emotion:
@@ -244,7 +244,7 @@ def load_emoticon_base64(filename: str) -> tuple[str, str]:
 
 
 # -----------------------------------
-# 7. PDF
+# 7. PDF – dobór i wczytywanie
 # -----------------------------------
 def map_emotion_to_pdf_file(emotion: str | None) -> str:
     png_name = map_emotion_to_file(emotion)
@@ -302,8 +302,6 @@ def webhook():
     allowed_sender = sender in ALLOWED_EMAILS
     has_keyword = bool(SLOWO_KLUCZ) and (SLOWO_KLUCZ in body_lower)
 
-    print(f"[DEBUG] Nadawca: {sender}, allowed={allowed_sender}, keyword={has_keyword}")
-
     if not allowed_sender and not has_keyword:
         print("[INFO] Nadawca nie jest dozwolony i nie użył słowa kluczowego:", sender)
         return jsonify({"status": "ignored", "reason": "sender not allowed"}), 200
@@ -330,26 +328,13 @@ def webhook():
     emoticon_file = map_emotion_to_file(emotion)
     emoticon_b64, emoticon_content_type = load_emoticon_base64(emoticon_file)
 
-    # -----------------------------------
-    # NOWA LOGIKA PDF + LOGI
-    # -----------------------------------
     pdf_needed = False
-
     if allowed_sender:
-        if "pdf" in body_lower:
-            print(f"[PDF] Załączam PDF — nadawca {sender} jest na liście i użył słowa 'pdf'")
+        if "pdf" in body_lower or has_keyword:
             pdf_needed = True
-        elif has_keyword:
-            print(f"[PDF] Załączam PDF — nadawca {sender} jest na liście i użył słowa kluczowego")
-            pdf_needed = True
-        else:
-            print(f"[PDF] NIE załączam PDF — nadawca {sender} jest na liście, ale nie użył 'pdf' ani słowa kluczowego")
     else:
         if has_keyword:
-            print(f"[PDF] Załączam PDF — nadawca {sender} NIE jest na liście, ale użył słowa kluczowego")
             pdf_needed = True
-        else:
-            print(f"[PDF] NIE załączam PDF — nadawca {sender} NIE jest na liście i nie użył słowa kluczowego")
 
     pdf_info = None
     if pdf_needed:
@@ -361,9 +346,6 @@ def webhook():
                 "content_type": pdf_content_type,
                 "base64": pdf_b64,
             }
-            print(f"[PDF] PDF załączony: {pdf_file}")
-        else:
-            print(f"[PDF] BŁĄD — nie udało się wczytać PDF: {pdf_file}")
 
     safe_text_html = text.replace("\n", "<br>")
     emoticon_cid = "emotka1"
@@ -372,12 +354,22 @@ def webhook():
 <hr>
 <div style="font-size: 11px; color: #0b3d0b; font-family: Georgia, 'Times New Roman', serif; line-height: 1.4;">
 ────────────────────────────────────────────<br>
-Ta wiadomość została wygenerowana automatycznie przez system Pawła.<br>
+Ta wiadomość została wygenerowana automatycznie przez system: i<br>
+program Pawła :<br>
+<a href="https://github.com/legionowopawel/AutoResponder_AI_Text" style="color:#0b3d0b;">
+https://github.com/legionowopawel/AutoResponder_AI_Text
+</a><br>
 • Google Apps Script – obsługa skrzynki Gmail<br>
-• Render.com – backend API<br>
-• Groq – modele AI<br>
+• Render.com – backend API odpowiadający na wiadomości<br>
+• Groq – modele AI generujące treść odpowiedzi<br>
+<br>
+Kod źródłowy projektu dostępny tutaj:<br>
+<a href="https://github.com/legionowopawel/AutoResponder_AI_Text.git" style="color:#0b3d0b;">
+https://github.com/legionowopawel/AutoIllustrator-Cloud2.git
+</a><br>
 ────────────────────────────────────────────<br>
-model tekstu: {text_source}<br>
+Program Pawła o nazwie: AutoResponder_AI_Text - Źródło<br>
+modelu tekstu: {text_source}     oraz model grafiki uzyty do obrazka: None<br>
 </div>
 """
 
