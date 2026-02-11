@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# app.py — poprawiona wersja webhooka dla AutoResponder
+# app.py — webhook generator treści (Render)
 # Uwaga: nie umieszczaj sekretów w tym pliku. Wszystkie klucze i listy emaili
-# powinny być w zmiennych środowiskowych.
+# powinny być w zmiennych środowiskowych po stronie Apps Script.
 
 import os
 import re
@@ -22,7 +22,6 @@ MAX_MODEL_INPUT_CHARS = 4000
 MAX_MODEL_REPLY_CHARS = 1500
 
 def normalize_email(email: str) -> str:
-    """Wyciąga adres z formatu 'Imię Nazwisko <email>' i normalizuje Gmaila."""
     email = (email or "").lower().strip()
     if "<" in email and ">" in email:
         start = email.find("<") + 1
@@ -37,23 +36,6 @@ def normalize_email(email: str) -> str:
         except Exception:
             return email
     return email
-
-def load_allowed_emails(env_name: str):
-    env = os.getenv(env_name, "")
-    if not env:
-        print(f"[WARN] Brak {env_name} w zmiennych środowiskowych")
-        return set()
-    emails = set()
-    for e in env.split(","):
-        clean = normalize_email(e.strip())
-        if clean:
-            emails.add(clean)
-    print(f"[INFO] Wczytano emaile z {env_name}: {emails}")
-    return emails
-
-ALLOWED_EMAILS = load_allowed_emails("ALLOWED_EMAILS")
-ALLOWED_EMAILS_BIZ = load_allowed_emails("ALLOWED_EMAILS_BIZNES")
-SLOWO_KLUCZ = (os.getenv("SLOWO_KLUCZ", "") or "").strip().lower()
 
 def load_prompt(filename: str = "prompt.txt"):
     try:
@@ -85,7 +67,6 @@ def truncate_reply(text: str, max_chars: int = MAX_MODEL_REPLY_CHARS) -> str:
 # Wywołania modelu (GROQ)
 # -------------------------
 def call_groq(user_text: str):
-    """Wywołanie modelu ogólnego (prompt.txt). Zwraca (tekst, source)."""
     key = os.getenv("YOUR_GROQ_API_KEY")
     if not key:
         print("[ERROR] Brak klucza YOUR_GROQ_API_KEY")
@@ -120,21 +101,19 @@ def call_groq(user_text: str):
     return None, None
 
 # -------------------------
-# Prompt biznesowy i bezpieczne parsowanie
+# Biznes prompt i parsowanie
 # -------------------------
 BIZ_PROMPT = ""
 try:
     with open("prompt_biznesowy.txt", "r", encoding="utf-8") as f:
         BIZ_PROMPT = f.read()
 except Exception:
-    # minimalny prompt jeśli plik nie istnieje
     BIZ_PROMPT = (
         "WAŻNE: ODPOWIEDŹ MUSI BYĆ WYŁĄCZNIE W FORMACIE JSON. ZWRÓĆ OBIEKT JSON:\n"
         '{"odpowiedz_tekstowa":"...","kategoria_pdf":"NAZWA_PLIKU.pdf"}\n\n{{USER_TEXT}}'
     )
 
 def call_groq_business(user_text: str):
-    """Wywołanie modelu biznesowego. Zwraca (tekst, pdf_name, source)."""
     key = os.getenv("YOUR_GROQ_API_KEY")
     if not key:
         print("[ERROR] Brak klucza YOUR_GROQ_API_KEY dla biznesu")
@@ -163,7 +142,6 @@ def call_groq_business(user_text: str):
             data = resp.json()
             content = data["choices"][0]["message"]["content"]
 
-            # Bezpieczne parsowanie JSON z odpowiedzi modelu
             pdf_name = "kontakt_godziny_pracy_notariusza_podstawowe_informacje.pdf"
             answer = ""
 
@@ -196,7 +174,7 @@ def call_groq_business(user_text: str):
     return None, None, None
 
 # -------------------------
-# Emocje i emotki
+# Emocje i pliki
 # -------------------------
 def detect_emotion_ai(user_text: str) -> str | None:
     key = os.getenv("YOUR_GROQ_API_KEY")
@@ -248,16 +226,12 @@ def load_emoticon_base64(filename: str) -> tuple[str, str]:
             return base64.b64encode(f.read()).decode("ascii"), "image/png"
     except Exception as e:
         print(f"[ERROR] Nie udało się wczytać emotki {path}: {e}")
-        # fallback do error.png
         try:
             with open(os.path.join("emotki", "error.png"), "rb") as f:
                 return base64.b64encode(f.read()).decode("ascii"), "image/png"
         except Exception:
             return "", "image/png"
 
-# -------------------------
-# PDF loader (zwykły i biznes)
-# -------------------------
 def map_emotion_to_pdf_file(emotion: str | None) -> str:
     png_name = map_emotion_to_file(emotion)
     return png_name.rsplit(".", 1)[0] + ".pdf"
@@ -269,7 +243,6 @@ def load_pdf_base64(filename: str) -> tuple[str, str]:
             return base64.b64encode(f.read()).decode("ascii"), "application/pdf"
     except Exception as e:
         print(f"[ERROR] Nie udało się wczytać PDF {path}: {e}")
-        # fallback
         try:
             with open(os.path.join("pdf", "error.pdf"), "rb") as f:
                 return base64.b64encode(f.read()).decode("ascii"), "application/pdf"
@@ -283,7 +256,6 @@ def load_pdf_biznes_base64(filename: str) -> tuple[str, str]:
             return base64.b64encode(f.read()).decode("ascii"), "application/pdf"
     except Exception as e:
         print(f"[ERROR] Nie udało się wczytać PDF biznesowego {path}: {e}")
-        # fallback do kontaktu w katalogu pdf_biznes
         try:
             with open(os.path.join("pdf_biznes", "kontakt_godziny_pracy_notariusza_podstawowe_informacje.pdf"), "rb") as f:
                 return base64.b64encode(f.read()).decode("ascii"), "application/pdf"
@@ -291,11 +263,10 @@ def load_pdf_biznes_base64(filename: str) -> tuple[str, str]:
             return "", "application/pdf"
 
 # -------------------------
-# Webhook — główna logika
+# Webhook — główna logika (BEZ WHITELIST)
 # -------------------------
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    # weryfikacja sekretu
     secret_header = request.headers.get("X-Webhook-Secret")
     expected_secret = os.getenv("WEBHOOK_SECRET", "")
     if expected_secret and secret_header != expected_secret:
@@ -309,11 +280,7 @@ def webhook():
     body = (data.get("body") or "").strip()
     body_lower = body.lower()
 
-    allowed_sender = sender in ALLOWED_EMAILS
-    business_sender = sender in ALLOWED_EMAILS_BIZ
-    has_keyword = bool(SLOWO_KLUCZ) and (SLOWO_KLUCZ in body_lower)
-
-    print(f"[DEBUG] Nadawca raw: {sender_raw} normalized: {sender} allowed={allowed_sender} biz={business_sender} keyword={has_keyword}")
+    print(f"[DEBUG] Nadawca raw: {sender_raw} normalized: {sender}")
 
     # ignoruj odpowiedzi
     if subject.lower().startswith("re:"):
@@ -324,114 +291,93 @@ def webhook():
         print("[INFO] Pusta treść wiadomości – ignoruję")
         return jsonify({"status": "ignored", "reason": "empty body"}), 200
 
-    # decyzja kto otrzyma co
-    send_zwykla = allowed_sender
-    send_biznes = business_sender
-
-    if has_keyword:
-        send_zwykla = True
-        send_biznes = True
-
-    if not send_zwykla and not send_biznes:
-        print("[INFO] Nadawca nie jest na żadnej liście i nie użył słowa kluczowego:", sender_raw, "->", sender)
-        return jsonify({"status": "ignored", "reason": "sender not allowed"}), 200
-
     result = {"status": "ok", "zwykly": None, "biznes": None}
 
-    # generuj odpowiedź biznesową
-    if send_biznes:
-        print("[INFO] Generuję odpowiedź biznesową dla:", sender)
-        biz_text, biz_pdf_name, biz_source = call_groq_business(body)
-        if not biz_text:
-            biz_text = "Czekam na pytanie."
-            biz_pdf_name = "kontakt_godziny_pracy_notariusza_podstawowe_informacje.pdf"
-            biz_source = "GROQ_BIZ:fallback"
+    # generuj odpowiedź biznesową (zawsze jeśli body istnieje)
+    print("[INFO] Generuję odpowiedź biznesową dla:", sender)
+    biz_text, biz_pdf_name, biz_source = call_groq_business(body)
+    if not biz_text:
+        biz_text = "Czekam na pytanie."
+        biz_pdf_name = "kontakt_godziny_pracy_notariusza_podstawowe_informacje.pdf"
+        biz_source = "GROQ_BIZ:fallback"
 
-        emotion = detect_emotion_ai(body)
-        emoticon_file = map_emotion_to_file(emotion)
-        emot_b64, emot_ct = load_emoticon_base64(emoticon_file)
+    emotion = detect_emotion_ai(body)
+    emoticon_file = map_emotion_to_file(emotion)
+    emot_b64, emot_ct = load_emoticon_base64(emoticon_file)
+    pdf_b64, pdf_ct = load_pdf_biznes_base64(biz_pdf_name)
+    pdf_info = None
+    if pdf_b64:
+        pdf_info = {"filename": biz_pdf_name, "content_type": pdf_ct, "base64": pdf_b64}
+        print("[PDF-BIZ] Dołączono:", biz_pdf_name)
+    else:
+        print("[PDF-BIZ] Brak PDF biznesowego:", biz_pdf_name)
 
-        pdf_b64, pdf_ct = load_pdf_biznes_base64(biz_pdf_name)
-        pdf_info = None
-        if pdf_b64:
-            pdf_info = {"filename": biz_pdf_name, "content_type": pdf_ct, "base64": pdf_b64}
-            print("[PDF-BIZ] Dołączono:", biz_pdf_name)
-        else:
-            print("[PDF-BIZ] Brak PDF biznesowego:", biz_pdf_name)
+    safe_html = biz_text.replace("\n", "<br>")
+    footer_html = (
+        "<hr>"
+        "<div style='font-size:11px;color:#0b3d0b;font-family:Georgia,Times New Roman,serif;line-height:1.4;'>"
+        "────────────────────────────────────────────<br>"
+        "Ta wiadomość została wygenerowana automatycznie przez system kancelarii notarialnej.<br>"
+        "To odpowiedź automatyczna, nie stanowi porady prawnej ani opinii notarialnej.<br>"
+        "────────────────────────────────────────────<br>"
+        f"model tekstu: {biz_source}<br>"
+        "</div>"
+    )
 
-        safe_html = biz_text.replace("\n", "<br>")
-        footer_html = (
-            "<hr>"
-            "<div style='font-size:11px;color:#0b3d0b;font-family:Georgia,Times New Roman,serif;line-height:1.4;'>"
-            "────────────────────────────────────────────<br>"
-            "Ta wiadomość została wygenerowana automatycznie przez system kancelarii notarialnej.<br>"
-            "To odpowiedź automatyczna, nie stanowi porady prawnej ani opinii notarialnej.<br>"
-            "────────────────────────────────────────────<br>"
-            f"model tekstu: {biz_source}<br>"
-            "</div>"
-        )
+    reply_html = f"<div style='font-family:Arial,sans-serif;font-size:14px;color:#000'>{safe_html}<br><img src='cid:emotka_biz' style='width:64px;height:64px;'><br>{footer_html}</div>"
 
-        reply_html = f"<div style='font-family:Arial,sans-serif;font-size:14px;color:#000'>{safe_html}<br><img src='cid:emotka_biz' style='width:64px;height:64px;'><br>{footer_html}</div>"
+    result["biznes"] = {
+        "reply_html": reply_html,
+        "text": biz_text,
+        "text_source": biz_source,
+        "emotion": emotion,
+        "emoticon": {"filename": emoticon_file, "content_type": emot_ct, "base64": emot_b64, "cid": "emotka_biz"},
+        "pdf": pdf_info,
+    }
 
-        result["biznes"] = {
-            "reply_html": reply_html,
-            "text": biz_text,
-            "text_source": biz_source,
-            "emotion": emotion,
-            "emoticon": {"filename": emoticon_file, "content_type": emot_ct, "base64": emot_b64, "cid": "emotka_biz"},
-            "pdf": pdf_info,
-        }
+    # generuj odpowiedź zwykłą (zawsze jeśli body istnieje)
+    print("[INFO] Generuję odpowiedź zwykłą dla:", sender)
+    zwykly_text, zwykly_source = call_groq(body)
+    if not zwykly_text:
+        zwykly_text = "Przepraszamy, wystąpił problem z wygenerowaniem odpowiedzi."
+        zwykly_source = "GROQ:fallback"
 
-    # generuj odpowiedź zwykłą
-    if send_zwykla:
-        print("[INFO] Generuję odpowiedź zwykłą dla:", sender)
-        zwykly_text, zwykly_source = call_groq(body)
-        if not zwykly_text:
-            zwykly_text = "Przepraszamy, wystąpił problem z wygenerowaniem odpowiedzi."
-            zwykly_source = "GROQ:fallback"
+    emotion = detect_emotion_ai(body)
+    emoticon_file = map_emotion_to_file(emotion)
+    emot_b64, emot_ct = load_emoticon_base64(emoticon_file)
 
-        emotion = detect_emotion_ai(body)
-        emoticon_file = map_emotion_to_file(emotion)
-        emot_b64, emot_ct = load_emoticon_base64(emoticon_file)
+    pdf_info = None
+    # backend może zawsze dołączać pdf zwykły (skrypt zdecyduje czy wysłać)
+    pdf_file = map_emotion_to_pdf_file(emotion)
+    pdf_b64, pdf_ct = load_pdf_base64(pdf_file)
+    if pdf_b64:
+        pdf_info = {"filename": pdf_file, "content_type": pdf_ct, "base64": pdf_b64}
+        print("[PDF] Dołączono:", pdf_file)
+    else:
+        print("[PDF] Brak PDF zwykłego:", pdf_file)
 
-        # dołącz PDF zwykły tylko jeśli nadawca jest allowed i poprosił o 'pdf' lub użyto słowa kluczowego
-        pdf_info = None
-        pdf_needed = False
-        if allowed_sender:
-            if "pdf" in body_lower or has_keyword:
-                pdf_needed = True
+    safe_html = zwykly_text.replace("\n", "<br>")
+    footer_html = (
+        "<hr>"
+        "<div style='font-size:11px;color:#0b3d0b;font-family:Georgia,Times New Roman,serif;line-height:1.4;'>"
+        "────────────────────────────────────────────<br>"
+        "Ta wiadomość została wygenerowana automatycznie przez system Pawła.<br>"
+        "To odpowiedź automatyczna, nie stanowi porady prawnej ani opinii notarialnej.<br>"
+        "────────────────────────────────────────────<br>"
+        f"model tekstu: {zwykly_source}<br>"
+        "</div>"
+    )
 
-        if pdf_needed:
-            pdf_file = map_emotion_to_pdf_file(emotion)
-            pdf_b64, pdf_ct = load_pdf_base64(pdf_file)
-            if pdf_b64:
-                pdf_info = {"filename": pdf_file, "content_type": pdf_ct, "base64": pdf_b64}
-                print("[PDF] Dołączono:", pdf_file)
-            else:
-                print("[PDF] Brak PDF zwykłego:", pdf_file)
+    reply_html = f"<div style='font-family:Arial,sans-serif;font-size:14px;color:#000'>{safe_html}<br><img src='cid:emotka_zwykly' style='width:64px;height:64px;'><br>{footer_html}</div>"
 
-        safe_html = zwykly_text.replace("\n", "<br>")
-        footer_html = (
-            "<hr>"
-            "<div style='font-size:11px;color:#0b3d0b;font-family:Georgia,Times New Roman,serif;line-height:1.4;'>"
-            "────────────────────────────────────────────<br>"
-            "Ta wiadomość została wygenerowana automatycznie przez system Pawła.<br>"
-            "To odpowiedź automatyczna, nie stanowi porady prawnej ani opinii notarialnej.<br>"
-            "────────────────────────────────────────────<br>"
-            f"model tekstu: {zwykly_source}<br>"
-            "</div>"
-        )
-
-        reply_html = f"<div style='font-family:Arial,sans-serif;font-size:14px;color:#000'>{safe_html}<br><img src='cid:emotka_zwykly' style='width:64px;height:64px;'><br>{footer_html}</div>"
-
-        result["zwykly"] = {
-            "reply_html": reply_html,
-            "text": zwykly_text,
-            "text_source": zwykly_source,
-            "emotion": emotion,
-            "emoticon": {"filename": emoticon_file, "content_type": emot_ct, "base64": emot_b64, "cid": "emotka_zwykly"},
-            "pdf": pdf_info,
-        }
+    result["zwykly"] = {
+        "reply_html": reply_html,
+        "text": zwykly_text,
+        "text_source": zwykly_source,
+        "emotion": emotion,
+        "emoticon": {"filename": emoticon_file, "content_type": emot_ct, "base64": emot_b64, "cid": "emotka_zwykly"},
+        "pdf": pdf_info,
+    }
 
     return jsonify(result), 200
 
