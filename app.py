@@ -213,20 +213,20 @@ modelu tekstu: {text_source}     oraz model grafiki uzyty do obrazka: None<br>
 </div>
 """
 
-    final_reply_html = f"""
+# Zamiana nowych linii na <br>, aby Gmail zachował formatowanie
+safe_text_html = text.replace("\n", "<br>")
+
+final_reply_html = f"""
 <div style="font-family: Arial, sans-serif; font-size: 14px; color: #000000;">
   <p><b>Treść mojej odpowiedzi:</b><br>
   <b>Na podstawie tego, co otrzymałem, przygotowałem odpowiedź:</b></p>
 
-  # Zamiana nowych linii na <br>
-  safe_text_html = text.replace("\n", "<br>")
-
   <p><i>{safe_text_html}</i></p>
-
 
   {footer_html}
 </div>
 """
+
 
     return jsonify({
         "status": "ok",
