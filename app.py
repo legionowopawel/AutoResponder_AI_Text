@@ -11,11 +11,20 @@ app.config["JSONIFY_PRETTYPRINT_REGULAR"] = False
 # -----------------------------------
 def normalize_email(email: str) -> str:
     email = (email or "").lower().strip()
+
+    # Jeśli Gmail zwraca format: "Imię Nazwisko <email>"
+    if "<" in email and ">" in email:
+        start = email.find("<") + 1
+        end = email.find(">")
+        email = email[start:end].strip()
+
+    # Normalizacja Gmaila (kropki i aliasy)
     if email.endswith("@gmail.com"):
         local, domain = email.split("@")
         local = local.replace(".", "")
         local = local.split("+", 1)[0]
         return f"{local}@{domain}"
+
     return email
 
 
