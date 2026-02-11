@@ -218,7 +218,11 @@ modelu tekstu: {text_source}     oraz model grafiki uzyty do obrazka: None<br>
   <p><b>Treść mojej odpowiedzi:</b><br>
   <b>Na podstawie tego, co otrzymałem, przygotowałem odpowiedź:</b></p>
 
-  <p><i>{text}</i></p>
+  # Zamiana nowych linii na <br>
+  safe_text_html = text.replace("\n", "<br>")
+
+  <p><i>{safe_text_html}</i></p>
+
 
   {footer_html}
 </div>
