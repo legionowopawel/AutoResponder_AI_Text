@@ -1,203 +1,299 @@
-# AutoIllustrator Cloud – Inteligentny Autoresponder Email  
-**Publiczna, bezpieczna wersja projektu**  
-Repozytorium: https://github.com/legionowopawel/AutoIllustrator-Cloud2.git
+# 📬 AutoResponder AI Text  
+Autoresponder Gmail z AI, emotkami inline (CID) i automatycznymi PDF‑ami
+
+Ten projekt to inteligentny autoresponder Gmail, który:
+
+- generuje odpowiedzi za pomocą AI (Groq),
+- rozpoznaje emocję nadawcy,
+- dołącza odpowiednią emotkę jako inline CID (wyświetla się w treści maila),
+- może automatycznie dołączyć PDF dopasowany do emocji,
+- działa tylko dla wybranych nadawców lub osób znających słowo kluczowe,
+- działa w pełni automatycznie dzięki Google Apps Script + Render.com.
 
 ---
 
-## 📌 Opis projektu
+## 🚀 Funkcje
 
-AutoIllustrator Cloud to inteligentny autoresponder emailowy, który automatycznie:
+### ✔ AI‑only – odpowiedź generowana przez model Groq  
+Backend wysyła treść maila do Groq i generuje odpowiedź.
 
-- odbiera wiadomości Gmail,
-- filtruje nadawców,
-- wysyła treść do backendu,
-- generuje odpowiedź AI (Groq Llama 3.3 70B),
-- odsyła odpowiedź do nadawcy,
-- dodaje stopkę informacyjną,
-- oznacza wiadomość jako przetworzoną.
+### ✔ AI rozpoznaje emocję nadawcy  
+Drugie zapytanie do AI określa jedną z emocji:
 
-Projekt działa w pełni autonomicznie i jest zaprojektowany tak, aby można go było bezpiecznie udostępnić publicznie.
+- radość  
+- smutek  
+- złość  
+- strach  
+- neutralne  
+- zaskoczenie  
+- nuda  
+- spokój  
 
----
-
-## 🛡️ Bezpieczeństwo
-
-To repozytorium **nie zawiera żadnych prywatnych danych**, ponieważ:
-
-- lista dozwolonych emaili znajduje się **wyłącznie w zmiennych środowiskowych Render.com**,
-- klucze API (Groq, SMTP, itp.) również są przechowywane tylko w Render,
-- Apps Script nie zawiera żadnych adresów email ani sekretów.
-
-Dzięki temu projekt jest w pełni bezpieczny do publikacji.
-
----
-
-## ⚙️ Architektura systemu
+### ✔ Emotka inline (CID)  
+Na podstawie emocji backend wybiera plik PNG z katalogu:
 
 ```
-Gmail → Google Apps Script → Render Backend → Groq AI → Render → Apps Script → Gmail
+emotki/
+```
+
+i zwraca go jako base64 + CID.  
+Apps Script wstawia emotkę bezpośrednio do treści maila.
+
+### ✔ Automatyczne PDF‑y  
+Jeśli w treści maila pojawi się słowo:
+
+```
+pdf
+```
+
+backend dołącza PDF z katalogu:
+
+```
+pdf/
+```
+
+PDF ma taką samą nazwę jak emotka, np.:
+
+```
+twarz_radosc.png → twarz_radosc.pdf
+```
+
+### ✔ Słowo kluczowe (SLOWO_KLUCZ)  
+Jeśli nadawca nie jest na liście ALLOWED_EMAILS, ale w treści maila użyje słowa kluczowego, autoresponder również zadziała.
+
+---
+
+## 📁 Struktura projektu
+
+```
+AutoResponder_AI_Text/
+│
+├── app.py
+├── prompt.txt
+├── requirements.txt
+├── wsgi.py
+├── README.md
+│
+├── emotki/
+│   ├── twarz_lek.png
+│   ├── twarz_nuda.png
+│   ├── twarz_radosc.png
+│   ├── twarz_smutek.png
+│   ├── twarz_spokoj.png
+│   ├── twarz_zaskoczenie.png
+│   ├── twarz_zlosc.png
+│   └── error.png
+│
+└── pdf/
+    ├── twarz_lek.pdf
+    ├── twarz_nuda.pdf
+    ├── twarz_radosc.pdf
+    ├── twarz_smutek.pdf
+    ├── twarz_spokoj.pdf
+    ├── twarz_zaskoczenie.pdf
+    ├── twarz_zlosc.pdf
+    └── error.pdf
 ```
 
 ---
 
-## 🔧 Backend (Render)https://dashboard.render.com/
+## 🔧 Zmienne środowiskowe (Render.com)
 
-### Environment Variables Wymagane zmienne środowiskowe:
-
-```
-
-
-**Jedna linia, bez spacji.**
-ALLOWED_EMAILS     =example1@gmail.com,example2@gmail.com,example3@gmail.com,example4@gmail.com,example5@gmail.com,example6@gmail.com,example7@gmail.com,example8@gmail.com,example9@gmail.com,example10@gmail.com,myEmail@gmail.com
-
-
-GROQ_MODELS       =llama-3.3-70b-versatile
-
-PORT=10000
-
-GUNICORN_TIMEOUT  =120
-
-WEB_CONCURRENCY   =1
-
-YOUR_GROQ_API_KEY =
-YOUR_HF_API_KEY   = 
-
-```
-
-
+| Nazwa | Opis |
+|-------|------|
+| `YOUR_GROQ_API_KEY` | Klucz API Groq |
+| `GROQ_MODELS` | Lista modeli, np. `llama3-70b-8192` |
+| `WEBHOOK_SECRET` | Sekret do autoryzacji webhooka |
+| `ALLOWED_EMAILS` | Lista dozwolonych nadawców, np. `email1@gmail.com,email2@gmail.com` |
+| `SLOWO_KLUCZ` | Słowo kluczowe odblokowujące autoresponder |
 
 ---
 
-## 📄 Google Apps Script (publiczna wersja)
+## 🧠 Logika dostępu
 
-Poniżej znajduje się pełny, bezpieczny skrypt, który możesz wkleić do Google Apps Script:
+Autoresponder odpowiada, jeśli:
+
+### ✔ nadawca jest na liście ALLOWED_EMAILS  
+**lub**  
+### ✔ treść maila zawiera SLOWO_KLUCZ  
+
+W przeciwnym razie wiadomość jest ignorowana.
+
+---
+
+## 🖼 Inline emotki (CID)
+
+Backend zwraca:
+
+```
+"emoticon": {
+    "cid": "emotka1",
+    "filename": "twarz_radosc.png",
+    "content_type": "image/png",
+    "base64": "..."
+}
+```
+
+Apps Script wstawia to jako:
+
+```
+inlineImages: { emotka1: blob }
+```
+
+---
+
+## 📄 Automatyczne PDF‑y
+
+Jeśli treść maila zawiera słowo:
+
+```
+pdf
+```
+
+backend zwraca:
+
+```
+"pdf": {
+    "filename": "twarz_radosc.pdf",
+    "content_type": "application/pdf",
+    "base64": "..."
+}
+```
+
+Apps Script dodaje to jako załącznik.
+
+---
+
+## 🧩 Google Apps Script (pełny skrypt)
+
+Wklej jako `Code.gs`:
 
 ```javascript
-/**
- * Public version of the Google Apps Script for the autoresponder system.
- * 
- * NOTE:
- * The list of allowed email addresses is NOT stored here.
- * It is securely stored in backend environment variables (Render.com → ALLOWED_EMAILS).
- * This script contains no private data and is safe to publish.
- */
+const BACKEND_URL = 'https://TWOJ-RENDER-URL/webhook'; 
+const WEBHOOK_SECRET = 'TU_WPROWADZ_TEN_SAM_WEBHOOK_SECRET';
 
-function checkMail() {
-  try {
-    GmailApp.getInboxUnreadCount();
-  } catch (e) {
-    Logger.log("Gmail quota exceeded: " + e);
-    return;
-  }
-
-  // Public version → backend decides who is allowed
-  const allowed = [];
-
-  const query = 'is:unread newer_than:5h -label:processed';
-  const MAX_THREADS = 5;
-  const threads = GmailApp.search(query).slice(0, MAX_THREADS);
+function autoResponder() {
+  const threads = GmailApp.search('is:inbox is:unread');
+  if (!threads.length) return;
 
   threads.forEach(thread => {
     const messages = thread.getMessages();
-    const msg = messages[messages.length - 1];
+    const lastMsg = messages[messages.length - 1];
 
-    let rawFrom = msg.getFrom();
-    let from = rawFrom.match(/<(.+?)>/)?.[1] || rawFrom;
-    from = normalizeEmail(from);
-
-    Logger.log("FROM: " + from);
-
-    const subject = msg.getSubject() || "";
-    const body = msg.getPlainBody() || "";
-
-    if (!body.trim()) {
-      msg.markRead();
-      thread.addLabel(GmailApp.createLabel("processed"));
-      return;
+    if (lastMsg.isInInbox() && !lastMsg.isDraft()) {
+      processMessage_(lastMsg);
     }
-
-    const payload = {
-      from: from,
-      subject: subject,
-      body: body
-    };
-
-    let responseJson = null;
-
-    try {
-      const response = UrlFetchApp.fetch(
-        "https://autoresponder-oilo.onrender.com/webhook",
-        {
-          method: "post",
-          contentType: "application/json",
-          payload: JSON.stringify(payload),
-          muteHttpExceptions: true
-        }
-      );
-
-      const text = response.getContentText();
-      Logger.log("WEBHOOK RAW RESPONSE: " + text);
-      responseJson = JSON.parse(text);
-
-    } catch (e) {
-      Logger.log("Webhook error: " + e);
-    }
-
-    if (responseJson && responseJson.status === "ok") {
-      GmailApp.sendEmail(
-        from,
-        "Re: " + subject,
-        responseJson.reply
-      );
-    }
-
-    msg.markRead();
-    thread.addLabel(GmailApp.createLabel("processed"));
   });
 }
 
-function normalizeEmail(email) {
-  email = email.toLowerCase().trim();
-  if (email.endsWith("@gmail.com")) {
-    let [local, domain] = email.split("@");
-    local = local.replace(/\./g, "");
-    local = local.replace(/\+.*/, "");
-    return local + "@" + domain;
+function processMessage_(message) {
+  const from = message.getFrom();
+  const subject = message.getSubject() || '';
+  const body = message.getPlainBody() || '';
+
+  const payload = {
+    from: from,
+    subject: subject,
+    body: body
+  };
+
+  const options = {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true,
+    headers: {
+      'X-Webhook-Secret': WEBHOOK_SECRET
+    }
+  };
+
+  let resp;
+  try {
+    resp = UrlFetchApp.fetch(BACKEND_URL, options);
+  } catch (e) {
+    Logger.log('Błąd backendu: ' + e);
+    return;
   }
-  return email;
+
+  if (resp.getResponseCode() !== 200) {
+    Logger.log('HTTP ' + resp.getResponseCode());
+    return;
+  }
+
+  let data;
+  try {
+    data = JSON.parse(resp.getContentText());
+  } catch (e) {
+    Logger.log('Błąd JSON: ' + e);
+    return;
+  }
+
+  if (data.status !== 'ok') return;
+
+  const replyHtml = data.reply || '';
+  const emoticon = data.emoticon || null;
+  const pdf = data.pdf || null;
+
+  const mailOptions = {
+    htmlBody: replyHtml
+  };
+
+  if (emoticon) {
+    const blob = Utilities.newBlob(
+      Utilities.base64Decode(emoticon.base64),
+      emoticon.content_type,
+      emoticon.filename
+    );
+    mailOptions.inlineImages = {};
+    mailOptions.inlineImages[emoticon.cid] = blob;
+  }
+
+  if (pdf) {
+    const pdfBlob = Utilities.newBlob(
+      Utilities.base64Decode(pdf.base64),
+      pdf.content_type,
+      pdf.filename
+    );
+    mailOptions.attachments = [pdfBlob];
+  }
+
+  GmailApp.sendEmail(
+    extractEmailAddress_(from),
+    'Re: ' + subject,
+    ' ',
+    mailOptions
+  );
+}
+
+function extractEmailAddress_(from) {
+  const match = from.match(/<(.+?)>/);
+  return match ? match[1] : from;
 }
 ```
 
 ---
 
-## 🚀 Jak uruchomić projekt
+## 🛠 Instalacja i uruchomienie
 
-1. Sklonuj repozytorium  
-2. Wgraj backend na Render.com  
-3. Ustaw zmienne środowiskowe (ALLOWED_EMAILS, klucze API)  
-4. Wklej Apps Script do Google Apps Script  
-5. Ustaw trigger „co minutę”  
-6. System działa automatycznie
-
----
-
-## 📬 Stopka generowanych wiadomości
-
-Każda odpowiedź zawiera informację:
+### 1. Sklonuj repo
 
 ```
-Ta wiadomość została wygenerowana automatycznie przez system:
-• Google Apps Script
-• Render.com
-• Groq AI
+git clone https://github.com/legionowopawel/AutoResponder_AI_Text.git
+```
 
-Kod źródłowy projektu:
-https://github.com/legionowopawel/AutoIllustrator-Cloud2.git
+### 2. Wgraj projekt na Render.com  
+Ustaw zmienne środowiskowe.
+
+### 3. W Google Apps Script wklej `Code.gs`  
+Ustaw trigger:
+
+```
+autoResponder → Time-driven → co minutę
 ```
 
 ---
 
-## 📜 Licencja
+## 📌 Licencja
 
-Projekt open‑source, bez danych prywatnych.
+Projekt open‑source. Możesz używać, modyfikować i rozwijać.
 
