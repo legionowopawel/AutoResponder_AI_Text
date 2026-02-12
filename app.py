@@ -47,7 +47,7 @@ def call_groq(system_prompt, user_msg, model_name):
     """Wywołuje Groq w formacie JSON Chat Completion."""
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
-        "Authorization": f"Bearer{os.getenv('KLUCZ_GROQ')}",
+        "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
     # UWAGA: Aby JSON działał, słowo 'JSON' musi być w prompcie
