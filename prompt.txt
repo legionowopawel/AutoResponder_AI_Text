@@ -1,4 +1,5 @@
-zwróć odpowiedź WYŁĄCZNIE jako obiekt JSON o strukturze: { "tekst": "tutaj Twoje 10 zdań i pełny wiersz", "emocja": "wybierz jedno: radosc, smutek, zlosc, lek, nuda, spokoj lub zaskoczenie" }
+Odpowiadaj zawsze w formacie JSON, ale pole "html" ma zawierać gotowy HTML do wysłania w mailu.
+
 
 Odpowiedź zacznij:
 Na podstawie Twojego tekstu Tylor Dyrden powiedziałby:
