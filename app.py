@@ -1,122 +1,190 @@
 import os
-import json
-import base64
 import requests
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# --- KONFIGURACJA POBIERANA Z RENDER ---
+# ============================
+# 1. KONFIGURACJA
+# ============================
+
+GROQ_API_KEY = os.getenv("KLUCZ_GROQ")
 MODEL_BIZ = os.getenv("MODEL_BIZ", "llama-3.3-70b-versatile")
 MODEL_TYLER = os.getenv("MODEL_TYLER", "llama-3.3-70b-versatile")
-GROQ_MAX_TOKENS = int(os.getenv("GROQ_MAX_TOKENS", 512))
-GROQ_API_KEY = "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"
 
-def get_emoticon_data(emotion_name):
-    """Obsługuje Twoje pliki PNG."""
-    emocje_map = {
-        "radosc": "twarz_radosc.png",
-        "smutek": "twarz_smutek.png",
-        "zlosc": "twarz_zlosc.png",
-        "lek": "twarz_lek.png",
-        "nuda": "twarz_nuda.png",
-        "spokoj": "twarz_spokoj.png",
-        "zaskoczenie": "twarz_zaskoczenie.png",
-        "error": "error.png"
-    }
-    file_name = emocje_map.get(emotion_name.lower(), "twarz_spokoj.png")
-    path = os.path.join("emotki", file_name)
-    
-    if os.path.exists(path):
-        with open(path, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode("utf-8")
-            return {"filename": file_name, "content_type": "image/png", "base64": b64, "cid": "emotka_cid"}
-    return None
+# ============================
+# 2. DIAGNOSTYKA TOKENA GROQ
+# ============================
 
-def get_pdf_info(filename):
-    """Pobiera PDF z folderu pdfy."""
-    clean_name = filename.strip()
-    path = os.path.join("pdfy", clean_name)
-    if not os.path.exists(path):
-        path = os.path.join("pdfy", "error.pdf")
-        clean_name = "error.pdf"
-    with open(path, "rb") as f:
-        return {"filename": clean_name, "base64": base64.b64encode(f.read()).decode("utf-8")}
+def debug_token():
+    key = GROQ_API_KEY
 
-def call_groq(system_prompt, user_msg, model_name):
-    """Wywołuje Groq w formacie JSON Chat Completion."""
+    print("=== DIAGNOSTYKA KLUCZA GROQ ===")
+
+    if key is None:
+        print("🔴 KLUCZ_GROQ = BRAK (Render NIE widzi zmiennej środowiskowej!)")
+        print("=== KONIEC DIAGNOSTYKI ===")
+        return
+
+    if key == "":
+        print("🔴 KLUCZ_GROQ = PUSTY STRING (zmienna ustawiona, ale bez wartości!)")
+        print("=== KONIEC DIAGNOSTYKI ===")
+        return
+
+    print("🟢 KLUCZ_GROQ = ZNALEZIONY")
+
+    # Sprawdzenie spacji
+    if key != key.strip():
+        print("🟠 UWAGA: Token ma spacje na początku lub końcu!")
+    else:
+        print("🟢 Brak spacji na początku/końcu")
+
+    # Długość
+    print(f"ℹ️ Długość tokena: {len(key)} znaków")
+
+    # Bezpieczny podgląd
+    start = key[:4]
+    end = key[-4:] if len(key) >= 8 else ""
+    print(f"🔍 Podgląd tokena: {start}...{end}")
+
+    # Podgląd nagłówka Authorization
+    print(f"🔎 Authorization header: Bearer {start}...{end}")
+
+    print("=== KONIEC DIAGNOSTYKI ===")
+
+
+# ============================
+# 3. NORMALIZACJA MAILI
+# ============================
+
+def normalize_email(email: str) -> str:
+    """Usuwa kropki i aliasy z Gmaila."""
+    email = (email or "").lower().strip()
+    if email.endswith("@gmail.com"):
+        local, domain = email.split("@")
+        local = local.replace(".", "").split("+", 1)[0]
+        return f"{local}@{domain}"
+    return email
+
+# ============================
+# 4. FUNKCJA DO WYWOŁANIA GROQ
+# ============================
+
+def call_groq(system_prompt: str, user_msg: str, model_name: str):
+    """Wywołuje API Groq i wymusza odpowiedź w JSON."""
+    if not GROQ_API_KEY:
+        print("[ERROR] Brak zmiennej środowiskowej KLUCZ_GROQ lub jest pusta!")
+        return None
+
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
-    # UWAGA: Aby JSON działał, słowo 'JSON' musi być w prompcie
+
     payload = {
         "model": model_name,
         "messages": [
-            {"role": "system", "content": system_prompt + " ALWAYS return response in VALID JSON format."},
+            {
+                "role": "system",
+                "content": system_prompt + " Odpowiadaj zawsze w formacie JSON."
+            },
             {"role": "user", "content": user_msg}
         ],
-        "temperature": 0.6,
-        "max_tokens": GROQ_MAX_TOKENS,
-        "response_format": {"type": "json_object"}
+        "response_format": {"type": "json_object"},
+        "temperature": 0.7
     }
+
     try:
-        r = requests.post(url, json=payload, timeout=30)
-        res_json = r.json()
-        
-        if 'choices' not in res_json:
-            app.logger.error(f"GROQ ERROR ({model_name}): {res_json}")
+        resp = requests.post(url, headers=headers, json=payload, timeout=20)
+
+        if resp.status_code != 200:
+            print(f"[GROQ ERROR ({model_name})]: {resp.text}")
             return None
-        
-        content = res_json['choices'][0]['message']['content']
-        return json.loads(content)
+
+        data = resp.json()
+        return data["choices"][0]["message"]["content"]
+
     except Exception as e:
-        app.logger.error(f"EXCEPTION: {str(e)}")
+        print(f"[EXCEPTION GROQ]: {str(e)}")
         return None
 
-@app.route('/webhook', methods=['POST'])
+# ============================
+# 5. POMOCNICZE FUNKCJE
+# ============================
+
+def get_base64_image():
+    """Zwraca przykładową emotkę w Base64."""
+    return (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+    )
+
+def generate_pdf_dummy():
+    """Symulacja generowania PDF w Base64."""
+    return "JVBERi0xLjQKJ...[SKRÓCONE]..."
+
+# ============================
+# 6. GŁÓWNY WEBHOOK
+# ============================
+
+@app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.json
-    user_msg = data.get("body", "")
-    result = {}
+    data = request.json or {}
 
-    # 1. BIZNESOWY (70B)
-    try:
-        with open("prompt_biznesowy.txt", "r", encoding="utf-8") as f:
-            biz_prompt = f.read()
-        biz_res = call_groq(biz_prompt, user_msg, MODEL_BIZ)
-        if biz_res:
-            pdf_name = biz_res.get("plik_pdf", "error.pdf")
-            result["biznes"] = {
-                "reply_html": f"<div>{biz_res.get('odpowiedz', '')}<br><br><small>Kancelaria Notarialna | Model: {MODEL_BIZ}</small></div>",
-                "pdf": get_pdf_info(pdf_name)
+    sender_raw = data.get("from", "")
+    sender = normalize_email(sender_raw)
+    subject = data.get("subject", "")
+    body = data.get("body", "")
+
+    # --- ZABEZPIECZENIA ---
+    if not body.strip():
+        return jsonify({"status": "ignored", "reason": "empty body"}), 200
+
+    if subject.lower().startswith("re:"):
+        return jsonify({"status": "ignored", "reason": "loop prevention"}), 200
+
+    # --- PROMPTY ---
+    prompt_biznes = "Jesteś uprzejmym Notariuszem. Przygotuj profesjonalną odpowiedź."
+    prompt_tyler = "Jesteś Tylerem Durdenem z Fight Clubu. Bądź cyniczny i krótki."
+
+    # --- WYWOŁANIA AI ---
+    res_biz = call_groq(prompt_biznes, body, MODEL_BIZ)
+    res_tyl = call_groq(prompt_tyler, body, MODEL_TYLER)
+
+    # --- BUDOWANIE ODPOWIEDZI ---
+    response_data = {
+        "biznes": None,
+        "zwykly": None
+    }
+
+    if res_biz:
+        response_data["biznes"] = {
+            "reply_html": f"<p>{res_biz}</p><img src='cid:emotka_cid'>",
+            "emoticon": {
+                "base64": get_base64_image(),
+                "content_type": "image/png",
+                "filename": "smile.png"
+            },
+            "pdf": {
+                "base64": generate_pdf_dummy(),
+                "filename": "Oferta_Notariusz.pdf"
             }
-    except Exception as e:
-        app.logger.error(f"Biznes error: {e}")
+        }
 
-    # 2. TYLER (8B - szybki i ma duże limity)
-    try:
-        with open("prompt.txt", "r", encoding="utf-8") as f:
-            tyler_prompt = f.read()
-        tyler_res = call_groq(tyler_prompt, user_msg, MODEL_TYLER)
-        if tyler_res:
-            emotion = tyler_res.get("emocja", "spokoj")
-            emot_data = get_emoticon_data(emotion)
-            reply_html = (
-                f"<div>{tyler_res.get('tekst', '').replace(chr(10), '<br>')}"
-                f"<br><br><img src='cid:emotka_cid' width='80'><br>"
-                f"<small>Model: {MODEL_TYLER}</small></div>"
-            )
-            result["zwykly"] = {
-                "reply_html": reply_html,
-                "emoticon": emot_data,
-                "pdf": get_pdf_info("error.pdf")
-            }
-    except Exception as e:
-        app.logger.error(f"Tyler error: {e}")
+    if res_tyl:
+        response_data["zwykly"] = {
+            "reply_html": f"<p><b>Tyler mówi:</b> {res_tyl}</p>"
+        }
 
-    return jsonify(result), 200
+    return jsonify(response_data), 200
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)
+# ============================
+# 7. START SERWERA
+# ============================
+
+if __name__ == "__main__":
+    # Diagnostyka przy starcie
+    debug_token()
+
+    port = int(os.getenv("PORT", "10000"))
+    app.run(host="0.0.0.0", port=port)
