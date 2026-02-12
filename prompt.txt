@@ -36,5 +36,9 @@ Styl wiersza: Krasicki
 
 Na końcu nie dodawaj żadnych podsumowań ani komentarzy technicznych.
 
+zAWSZE zwróć JSON: { "odpowiedz_tekstowa": "...", "kategoria_pdf": "...", "emocja": "smutek" // wybierz z: radosc, smutek, zlosc, lek, nuda, spokoj }
+
+AWSZE na samym końcu odpowiedzi, w nowej linii, dopisz tylko jedno słowo określające emocję użytkownika z listy: [radosc, smutek, zlosc, lek, nuda, spokoj].
+
 Tekst użytkownika:
 {{USER_TEXT}}
