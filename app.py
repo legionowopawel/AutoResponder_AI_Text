@@ -10,6 +10,7 @@ app = Flask(__name__)
 MODEL_BIZ = os.getenv("MODEL_BIZ", "llama-3.3-70b-versatile")
 MODEL_TYLER = os.getenv("MODEL_TYLER", "llama-3.3-70b-versatile")
 GROQ_MAX_TOKENS = int(os.getenv("GROQ_MAX_TOKENS", 512))
+GROQ_API_KEY = "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"
 
 def get_emoticon_data(emotion_name):
     """Obsługuje Twoje pliki PNG."""
