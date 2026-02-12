@@ -6,10 +6,10 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# --- NOWE MODELE (ZGODNE Z LOGAMI) ---
-MODEL_BIZ = "llama-3.3-70b-versatile"
-MODEL_TYLER = "llama-3.1-8b-instant" 
-GROQ_MAX_TOKENS = 1024
+# --- KONFIGURACJA POBIERANA Z RENDER ---
+MODEL_BIZ = os.getenv("MODEL_BIZ", "llama-3.3-70b-versatile")
+MODEL_TYLER = os.getenv("MODEL_TYLER", "llama-3.3-70b-versatile")
+GROQ_MAX_TOKENS = int(os.getenv("GROQ_MAX_TOKENS", 512))
 
 def get_emoticon_data(emotion_name):
     """Obsługuje Twoje pliki PNG."""
