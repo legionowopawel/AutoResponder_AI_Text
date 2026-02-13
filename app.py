@@ -5,6 +5,44 @@ import base64
 import requests
 from flask import Flask, request, jsonify
 
+import json
+
+def sanitize_model_output(raw_text: str) -> str:
+    """
+    Jeśli model zwrócił JSON lub JSON + tekst, wyciągnij właściwy tekst.
+    Zwraca czysty tekst odpowiedzi.
+    """
+    if not raw_text:
+        return ""
+    txt = raw_text.strip()
+    # Jeśli cały tekst jest JSONem, spróbuj sparsować i wyciągnąć typowe pola
+    if txt.startswith("{") or txt.startswith("["):
+        try:
+            obj = json.loads(txt)
+            if isinstance(obj, dict):
+                for key in ("odpowiedz_tekstowa", "reply", "answer", "text", "message", "reply_html"):
+                    if key in obj:
+                        return str(obj[key])
+                # jeśli dict z jedną wartością, zwróć ją
+                if len(obj) == 1:
+                    return str(next(iter(obj.values())))
+            if isinstance(obj, list):
+                return "\n".join(str(x) for x in obj)
+        except Exception:
+            pass
+    # Jeśli JSON jest na początku, a potem jest tekst, usuń wrapper JSON
+    if txt.startswith("{") and "}" in txt:
+        try:
+            end = txt.index("}") + 1
+            maybe_json = txt[:end]
+            obj = json.loads(maybe_json)
+            remainder = txt[end:].strip()
+            if remainder:
+                return remainder
+        except Exception:
+            pass
+    return raw_text
+
 app = Flask(__name__)
 
 # Konfiguracja
@@ -172,6 +210,7 @@ def webhook():
     prompt_for_model = prompt_template.replace("{{USER_TEXT}}", body[:3000])
 
     res_tyler = call_groq(prompt_for_model, body, MODEL_TYLER)
+    res_tyler = sanitize_model_output(res_tyler)
     if not res_tyler:
         res_tyler = "Przepraszam, wystąpił problem z generowaniem odpowiedzi."
 
@@ -202,6 +241,7 @@ def webhook():
 
     prompt_biz_for_model = prompt_biz_template.replace("{{USER_TEXT}}", body[:3000])
     res_biz = call_groq(prompt_biz_for_model, body, MODEL_BIZ)
+    res_biz = sanitize_model_output(res_biz)
     if not res_biz:
         res_biz = "Przepraszam, wystąpił problem z generowaniem odpowiedzi biznesowej."
 
