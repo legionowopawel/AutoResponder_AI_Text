@@ -273,6 +273,8 @@ def webhook():
 
 
     # wykryj temat i wybierz pdf (bez czytania UNKNOWN.pdf; walidacja i fallback)
+    
+    # wykryj temat i wybierz pdf (bez czytania UNKNOWN.pdf; walidacja i fallback)
     topic_pdf_key = detect_notarial_topic_and_choose_pdf(body)
 
     # normalizacja i przygotowanie nazwy pliku
@@ -321,7 +323,7 @@ def webhook():
         "umowa_spolki_cywilnej_wyjasnienie_i_wymogi_formalne.pdf",
         "rejestracja_zmian_w_krs_przez_notariusza_instrukcja.pdf",
         "likwidacja_spolki_z_o_o_krok_po_kroku_z_notariuszem.pdf",
-        "umowa_zbycia_przedsiebiorstwa_wymogi_i_konsekwencje.pdf",
+        "umowa_zbycia_przedsiebiorstwa_wymagane_dokumenty_i_konsekwencje.pdf",
         "umowa_ustanowienia_zastawu_rejestrowego_wyjasnienie.pdf",
         "intercyza_umowa_majatkowa_malzenska_wyjasnienie_i_koszty.pdf",
         "umowa_rozszerzajaca_wspolnosc_majatkowa_wytyczne.pdf",
