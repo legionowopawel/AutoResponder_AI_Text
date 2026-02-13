@@ -270,67 +270,91 @@ def webhook():
         res_biz = "Przepraszam, wystąpił problem z generowaniem odpowiedzi biznesowej."
 
 # wykryj temat i wybierz pdf (bez czytania UNKNOWN.pdf; walidacja i fallback)
-topic_pdf_key = detect_notarial_topic_and_choose_pdf(body)
 
-# normalizacja i przygotowanie nazwy pliku
-if not topic_pdf_key or topic_pdf_key == "UNKNOWN":
-    requested_filename = "kontakt_godziny_pracy_notariusza_podstawowe_informacje.pdf"
-else:
-    requested_filename = topic_pdf_key if topic_pdf_key.endswith(".pdf") else f"{topic_pdf_key}.pdf"
 
-# lista dozwolonych plików (dokładne nazwy z rozszerzeniem .pdf)
-ALLOWED_FILES = {
-    "sprzedaz_nieruchomosci_mieszkanie_procedura_koszty_wymagane_dokumenty.pdf",
-    "zakup_nieruchomosci_mieszkanie_rynek_pierwotny_wytyczne_notarialne.pdf",
-    "zakup_nieruchomosci_rynek_wtorny_sprawdzenie_stanu_prawnego.pdf",
-    "darowizna_mieszkania_lub_domu_obowiazki_podatkowe_i_formalne.pdf",
-    "umowa_darowizny_nieruchomosci_wymagane_dokumenty_i_terminy.pdf",
-    "zniesienie_wspolwlasnosci_nieruchomosci_krok_po_kroku.pdf",
-    "podzial_majatku_wspolnego_nieruchomosci_wytyczne_notariusza.pdf",
-    "sluzebnosc_drogi_koniecznej_wyjasnienie_i_procedura.pdf",
-    "ustanowienie_hipoteki_na_nieruchomosci_wymogi_i_koszty.pdf",
-    "umowa_przedwstepna_sprzedazy_nieruchomosci_wzorzec_i_wytyczne.pdf",
-    "sporządzenie_testamentu_notarialnego_wytyczne_i_koszty.pdf",
-    "odwolanie_lub_zmiana_testamentu_notarialnego_procedura.pdf",
-    "stwierdzenie_nabycia_spadku_notarialnie_wymagane_dokumenty.pdf",
-    "dzial_spadku_umowny_krok_po_kroku_z_notariuszem.pdf",
-    "zachowek_wyjasnienie_praw_i_obowiazkow_spadkobiercow.pdf",
-    "odrzucenie_spadku_w_terminie_6_miesiecy_instrukcja.pdf",
-    "przyjecie_spadku_z_dobrodziejstwem_inwentarza_wytyczne.pdf",
-    "umowa_o_zrzeczenie_sie_dziedziczenia_zasady_i_skutki.pdf",
-    "spis_inwentarza_wyjasnienie_procedury_i_kosztow.pdf",
-    "testament_dla_osoby_niepelnosprawnej_wymogi_formalne.pdf",
-    "pelnomocnictwo_do_sprzedazy_nieruchomosci_wymogi_i_zabezpieczenia.pdf",
-    "pelnomocnictwo_do_zakupu_nieruchomosci_wytyczne_notarialne.pdf",
-    "pelnomocnictwo_ogolne_zakres_uprawnien_i_ryzyka.pdf",
-    "pelnomocnictwo_szczegolne_do_czynnosci_prawnych_wzor.pdf",
-    "oswiadczenie_o_podrozy_dziecka_za_granice_wymogi.pdf",
-    "oswiadczenie_o_podziale_majatku_wspolnego_po_rozwodzie.pdf",
-    "oswiadczenie_o_ustanowieniu_rozszerzonej_wspolnosci_majatkowej.pdf",
-    "oswiadczenie_o_ustanowieniu_rozlacznej_wspolnosci_majatkowej.pdf",
-    "oswiadczenie_o_przyjeciu_lub_odrzuceniu_spadku_wzor.pdf",
-    "oswiadczenie_o_stanie_rodzinnym_i_majatkowym_wymogi.pdf",
-    "zakladanie_spolki_z_o_o_wymagane_dokumenty_i_koszty.pdf",
-    "umowa_spolki_z_o_o_wyjasnienie_kluczowych_postanowien.pdf",
-    "przeksztalcenie_jdg_w_spolke_z_o_o_procedura_notarialna.pdf",
-    "sprzedaz_udzialow_w_spolce_z_o_o_wytyczne_i_ryzyka.pdf",
-    "prokura_ustanowienie_zakres_uprawnien_i_obowiazkow.pdf",
-    "umowa_spolki_cywilnej_wyjasnienie_i_wymogi_formalne.pdf",
-    "rejestracja_zmian_w_krs_przez_notariusza_instrukcja.pdf",
-    "likwidacja_spolki_z_o_o_krok_po_kroku_z_notariuszem.pdf",
-    "umowa_zbycia_przedsiebiorstwa_wymogi_i_konsekwencje.pdf",
-    "umowa_ustanowienia_zastawu_rejestrowego_wyjasnienie.pdf",
-    "intercyza_umowa_majatkowa_malzenska_wyjasnienie_i_koszty.pdf",
-    "umowa_rozszerzajaca_wspolnosc_majatkowa_wytyczne.pdf",
-    "umowa_ograniczajaca_wspolnosc_majatkowa_instrukcja.pdf",
-    "umowa_wylaczajaca_wspolnosc_majatkowa_skutki_prawne.pdf",
-    "podzial_majatku_po_rozwodzie_z_notariuszem_krok_po_kroku.pdf",
-    "ustanowienie_rozlacznej_wspolnosci_majatkowej_wzor.pdf",
-    "umowa_o_podzial_majatku_wspolnego_po_separacji.pdf",
-    "umowa_o_ustanowienie_sluzebnosci_mieszkania_wyjasnienie.pdf",
-    "umowa_o_ustanowienie_uzytkowania_wyjasnienie_i_koszty.pdf",
-    "kontakt_godziny_pracy_notariusza_podstawowe_informacje.pdf"
-}
+    # wykryj temat i wybierz pdf (bez czytania UNKNOWN.pdf; walidacja i fallback)
+    topic_pdf_key = detect_notarial_topic_and_choose_pdf(body)
+
+    # normalizacja i przygotowanie nazwy pliku
+    if not topic_pdf_key or topic_pdf_key == "UNKNOWN":
+        requested_filename = "kontakt_godziny_pracy_notariusza_podstawowe_informacje.pdf"
+    else:
+        requested_filename = topic_pdf_key if topic_pdf_key.endswith(".pdf") else f"{topic_pdf_key}.pdf"
+
+    # lista dozwolonych plików (dokładne nazwy z rozszerzeniem .pdf)
+    ALLOWED_FILES = {
+        "sprzedaz_nieruchomosci_mieszkanie_procedura_koszty_wymagane_dokumenty.pdf",
+        "zakup_nieruchomosci_mieszkanie_rynek_pierwotny_wytyczne_notarialne.pdf",
+        "zakup_nieruchomosci_rynek_wtorny_sprawdzenie_stanu_prawnego.pdf",
+        "darowizna_mieszkania_lub_domu_obowiazki_podatkowe_i_formalne.pdf",
+        "umowa_darowizny_nieruchomosci_wymagane_dokumenty_i_terminy.pdf",
+        "zniesienie_wspolwlasnosci_nieruchomosci_krok_po_kroku.pdf",
+        "podzial_majatku_wspolnego_nieruchomosci_wytyczne_notariusza.pdf",
+        "sluzebnosc_drogi_koniecznej_wyjasnienie_i_procedura.pdf",
+        "ustanowienie_hipoteki_na_nieruchomosci_wymogi_i_koszty.pdf",
+        "umowa_przedwstepna_sprzedazy_nieruchomosci_wzorzec_i_wytyczne.pdf",
+        "sporządzenie_testamentu_notarialnego_wytyczne_i_koszty.pdf",
+        "odwolanie_lub_zmiana_testamentu_notarialnego_procedura.pdf",
+        "stwierdzenie_nabycia_spadku_notarialnie_wymagane_dokumenty.pdf",
+        "dzial_spadku_umowny_krok_po_kroku_z_notariuszem.pdf",
+        "zachowek_wyjasnienie_praw_i_obowiazkow_spadkobiercow.pdf",
+        "odrzucenie_spadku_w_terminie_6_miesiecy_instrukcja.pdf",
+        "przyjecie_spadku_z_dobrodziejstwem_inwentarza_wytyczne.pdf",
+        "umowa_o_zrzeczenie_sie_dziedziczenia_zasady_i_skutki.pdf",
+        "spis_inwentarza_wyjasnienie_procedury_i_kosztow.pdf",
+        "testament_dla_osoby_niepelnosprawnej_wymogi_formalne.pdf",
+        "pelnomocnictwo_do_sprzedazy_nieruchomosci_wymogi_i_zabezpieczenia.pdf",
+        "pelnomocnictwo_do_zakupu_nieruchomosci_wytyczne_notarialne.pdf",
+        "pelnomocnictwo_ogolne_zakres_uprawnien_i_ryzyka.pdf",
+        "pelnomocnictwo_szczegolne_do_czynnosci_prawnych_wzor.pdf",
+        "oswiadczenie_o_podrozy_dziecka_za_granice_wymogi.pdf",
+        "oswiadczenie_o_podziale_majatku_wspolnego_po_rozwodzie.pdf",
+        "oswiadczenie_o_ustanowieniu_rozszerzonej_wspolnosci_majatkowej.pdf",
+        "oswiadczenie_o_ustanowieniu_rozlacznej_wspolnosci_majatkowej.pdf",
+        "oswiadczenie_o_przyjeciu_lub_odrzuceniu_spadku_wzor.pdf",
+        "oswiadczenie_o_stanie_rodzinnym_i_majatkowym_wymogi.pdf",
+        "zakladanie_spolki_z_o_o_wymagane_dokumenty_i_koszty.pdf",
+        "umowa_spolki_z_o_o_wyjasnienie_kluczowych_postanowien.pdf",
+        "przeksztalcenie_jdg_w_spolke_z_o_o_procedura_notarialna.pdf",
+        "sprzedaz_udzialow_w_spolce_z_o_o_wytyczne_i_ryzyka.pdf",
+        "prokura_ustanowienie_zakres_uprawnien_i_obowiazkow.pdf",
+        "umowa_spolki_cywilnej_wyjasnienie_i_wymogi_formalne.pdf",
+        "rejestracja_zmian_w_krs_przez_notariusza_instrukcja.pdf",
+        "likwidacja_spolki_z_o_o_krok_po_kroku_z_notariuszem.pdf",
+        "umowa_zbycia_przedsiebiorstwa_wymogi_i_konsekwencje.pdf",
+        "umowa_ustanowienia_zastawu_rejestrowego_wyjasnienie.pdf",
+        "intercyza_umowa_majatkowa_malzenska_wyjasnienie_i_koszty.pdf",
+        "umowa_rozszerzajaca_wspolnosc_majatkowa_wytyczne.pdf",
+        "umowa_ograniczajaca_wspolnosc_majatkowa_instrukcja.pdf",
+        "umowa_wylaczajaca_wspolnosc_majatkowa_skutki_prawne.pdf",
+        "podzial_majatku_po_rozwodzie_z_notariuszem_krok_po_kroku.pdf",
+        "ustanowienie_rozlacznej_wspolnosci_majatkowej_wzor.pdf",
+        "umowa_o_podzial_majatku_wspolnego_po_separacji.pdf",
+        "umowa_o_ustanowienie_sluzebnosci_mieszkania_wyjasnienie.pdf",
+        "umowa_o_ustanowienie_uzytkowania_wyjasnienie_i_koszty.pdf",
+        "kontakt_godziny_pracy_notariusza_podstawowe_informacje.pdf"
+    }
+
+    # jeśli model podał coś spoza listy, ustaw fallback
+    if requested_filename not in ALLOWED_FILES:
+        app.logger.warning("Model zwrócił niedozwoloną kategorię: %s — używam fallbacku", requested_filename)
+        requested_filename = "kontakt_godziny_pracy_notariusza_podstawowe_informacje.pdf"
+
+    # odczyt pliku tylko z katalogu pdf_biznes
+    pdf_path = os.path.join(PDF_DIR, requested_filename)
+    pdf_b64_biz = read_file_base64(pdf_path)
+    app.logger.info("BUSINESS PDF try: %s ; base64 present? %s", pdf_path, bool(pdf_b64_biz))
+
+    # jeśli plik nie istnieje fizycznie, użyj fallbacku kontaktowego
+    if not pdf_b64_biz:
+        fallback_filename = "kontakt_godziny_pracy_notariusza_podstawowe_informacje.pdf"
+        fallback_path = os.path.join(PDF_DIR, fallback_filename)
+        app.logger.warning("Brak pliku %s w pdf_biznes, używam fallbacku: %s", requested_filename, fallback_path)
+        pdf_b64_biz = read_file_base64(fallback_path)
+        chosen_filename = fallback_filename if pdf_b64_biz else requested_filename
+    else:
+        chosen_filename = requested_filename
+
 
 # jeśli model podał coś spoza listy, ustaw fallback
 if requested_filename not in ALLOWED_FILES:
