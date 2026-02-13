@@ -17,3 +17,6 @@ env/
 
 # --- Project-specific ---
 ideaProgramu.txt
+
+#ignoruje cały kat
+backup/
