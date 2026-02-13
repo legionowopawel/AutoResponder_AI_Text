@@ -51,7 +51,7 @@ MODEL_BIZ = os.getenv("MODEL_BIZ", "llama-3.3-70b-versatile")
 MODEL_TYLER = os.getenv("MODEL_TYLER", "llama-3.3-70b-versatile")
 
 EMOTKI_DIR = os.path.join(os.path.dirname(__file__), "emotki")
-PDF_DIR = os.path.join(os.path.dirname(__file__), "pdf")
+PDF_DIR = os.path.join(os.path.dirname(__file__), "pdf_biznes")
 
 EMOTIONS = [
     "twarz_lek",
