@@ -69,7 +69,7 @@ EMOTIONS = [
 ]
 FALLBACK_EMOT = "error"
 
-# Pomocniczne
+# Pomocnicze
 def read_file_base64(path):
     try:
         with open(path, "rb") as f:
@@ -88,7 +88,7 @@ def safe_emoticon_and_pdf_for(emotion_key):
     - PNG emotki czytamy z EMOTKI_DIR.
     - PDF emotki (opcjonalnie) czytamy z EMOTKI_DIR.
     - Jeśli brak PNG, używamy fallback PNG z EMOTKI_DIR.
-    - Jeśli brak PDF emotki, NIE próbujemy czytać z PDF_DIR; zwracamy None (backend użyje fallbacku notarialnego tylko dla biznesowej części).
+    - Jeśli brak PDF emotki, zwracamy None dla pdf_b64.
     """
     png_name = f"{emotion_key}.png"
     pdf_name = f"{emotion_key}.pdf"
@@ -100,12 +100,9 @@ def safe_emoticon_and_pdf_for(emotion_key):
     if not png_b64:
         png_b64 = read_file_base64(os.path.join(EMOTKI_DIR, f"{FALLBACK_EMOT}.png"))
 
-    # jeśli nie chcesz PDF emotek, ustaw pdf_b64 = None
     pdf_b64 = read_file_base64(pdf_path)
-    # nie próbujemy czytać error.pdf z PDF_DIR tutaj
 
     return png_b64, pdf_b64
-
 
 # Wywołanie Groq (tekstowe)
 def call_groq(system_prompt: str, user_msg: str, model_name: str, timeout=20):
@@ -136,13 +133,10 @@ def call_groq(system_prompt: str, user_msg: str, model_name: str, timeout=20):
         try:
             data = resp.json()
         except Exception:
-            # jeśli odpowiedź nie jest JSONem, zwróć surowy tekst
             return sanitize_model_output(resp.text)
-        # standardowy format OpenAI-like
         try:
             content = data["choices"][0]["message"]["content"]
         except Exception:
-            # fallback: spróbuj inne pola
             content = None
             if isinstance(data, dict):
                 for key in ("content", "text", "message", "reply"):
@@ -269,11 +263,6 @@ def webhook():
     if not res_biz:
         res_biz = "Przepraszam, wystąpił problem z generowaniem odpowiedzi biznesowej."
 
-# wykryj temat i wybierz pdf (bez czytania UNKNOWN.pdf; walidacja i fallback)
-
-
-    # wykryj temat i wybierz pdf (bez czytania UNKNOWN.pdf; walidacja i fallback)
-    
     # wykryj temat i wybierz pdf (bez czytania UNKNOWN.pdf; walidacja i fallback)
     topic_pdf_key = detect_notarial_topic_and_choose_pdf(body)
 
@@ -356,27 +345,6 @@ def webhook():
         chosen_filename = fallback_filename if pdf_b64_biz else requested_filename
     else:
         chosen_filename = requested_filename
-
-
-# jeśli model podał coś spoza listy, ustaw fallback
-if requested_filename not in ALLOWED_FILES:
-    app.logger.warning("Model zwrócił niedozwoloną kategorię: %s — używam fallbacku", requested_filename)
-    requested_filename = "kontakt_godziny_pracy_notariusza_podstawowe_informacje.pdf"
-
-# odczyt pliku tylko z katalogu pdf_biznes
-pdf_path = os.path.join(PDF_DIR, requested_filename)
-pdf_b64_biz = read_file_base64(pdf_path)
-app.logger.info("BUSINESS PDF try: %s ; base64 present? %s", pdf_path, bool(pdf_b64_biz))
-
-# jeśli plik nie istnieje fizycznie, użyj fallbacku kontaktowego
-if not pdf_b64_biz:
-    fallback_filename = "kontakt_godziny_pracy_notariusza_podstawowe_informacje.pdf"
-    fallback_path = os.path.join(PDF_DIR, fallback_filename)
-    app.logger.warning("Brak pliku %s w pdf_biznes, używam fallbacku: %s", requested_filename, fallback_path)
-    pdf_b64_biz = read_file_base64(fallback_path)
-    chosen_filename = fallback_filename if pdf_b64_biz else requested_filename
-else:
-    chosen_filename = requested_filename
 
     biz_section = {
         "reply_html": build_html_reply(res_biz + ("\n\nRozpoznane zagadnienia: (zobacz załącznik)" if topic_pdf_key == "UNKNOWN" else "")),
