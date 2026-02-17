@@ -4,9 +4,11 @@ import os
 import base64
 import requests
 import json
+import re
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
+
 
 def sanitize_model_output(raw_text: str) -> str:
     """
@@ -50,6 +52,28 @@ def sanitize_model_output(raw_text: str) -> str:
             pass
     return raw_text
 
+
+def extract_clean_text(text: str) -> str:
+    """
+    Z odpowiedzi zawierającej JSON + inne treści wyciąga pole 'odpowiedz_tekstowa',
+    jeśli jest dostępne. W przeciwnym razie zwraca przycięty tekst.
+    """
+    if not text:
+        return ""
+    txt = text.strip()
+    match = re.search(r'\{.*\}', txt, re.DOTALL)
+    if not match:
+        return txt
+    try:
+        obj = json.loads(match.group(0))
+        if isinstance(obj, dict) and "odpowiedz_tekstowa" in obj:
+            val = obj["odpowiedz_tekstowa"]
+            return val.strip() if isinstance(val, str) else json.dumps(val, ensure_ascii=False)
+        return txt
+    except Exception:
+        return txt
+
+
 # Konfiguracja
 GROQ_API_KEY = os.getenv("KLUCZ_GROQ")
 MODEL_BIZ = os.getenv("MODEL_BIZ", "llama-3.3-70b-versatile")
@@ -69,6 +93,7 @@ EMOTIONS = [
 ]
 FALLBACK_EMOT = "error"
 
+
 # Pomocniczne
 def read_file_base64(path):
     try:
@@ -81,6 +106,7 @@ def read_file_base64(path):
     except Exception as e:
         app.logger.warning("read_file_base64 failed for %s: %s", path, e)
         return None
+
 
 def safe_emoticon_and_pdf_for(emotion_key):
     """Zwraca tuple (png_b64, pdf_b64); jeśli brak, używa error fallback."""
@@ -99,6 +125,7 @@ def safe_emoticon_and_pdf_for(emotion_key):
         pdf_b64 = read_file_base64(os.path.join(PDF_DIR, f"{FALLBACK_EMOT}.pdf"))
 
     return png_b64, pdf_b64
+
 
 # Wywołanie Groq (tekstowe)
 def call_groq(system_prompt: str, user_msg: str, model_name: str, timeout=20):
@@ -149,6 +176,7 @@ def call_groq(system_prompt: str, user_msg: str, model_name: str, timeout=20):
         app.logger.exception("Błąd wywołania Groq: %s", e)
         return None
 
+
 # Prosty helper: poproś model o jednowyrazowe rozpoznanie emocji spośród listy
 def detect_emotion_via_model(body_text: str):
     prompt = (
@@ -164,6 +192,7 @@ def detect_emotion_via_model(body_text: str):
         if e in token:
             return e
     return FALLBACK_EMOT
+
 
 # Prosty helper: wykryj temat notarialny i wybierz pasujący pdf
 def detect_notarial_topic_and_choose_pdf(body_text: str):
@@ -194,8 +223,10 @@ def detect_notarial_topic_and_choose_pdf(body_text: str):
         return "sprzedaz_nieruchomosci_mieszkanie_procedura_koszty_wymagane_dokumenty"
     return "UNKNOWN"
 
+
 # Formatowanie HTML zgodnie z wymaganiem (kursywa + zielona stopka)
 def build_html_reply(body_text: str):
+    body_text = body_text.replace("\n", "<br>")
     html = f"<p><i>{body_text}</i></p>\n"
     html += (
         "<p style=\"color:#0a8a0a; font-size:10px;\">"
@@ -204,6 +235,7 @@ def build_html_reply(body_text: str):
         "</p>"
     )
     return html
+
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -227,8 +259,9 @@ def webhook():
 
     prompt_for_model = prompt_template.replace("{{USER_TEXT}}", body[:3000])
 
-    res_tyler = call_groq(prompt_for_model, body, MODEL_TYLER)
-    res_tyler = sanitize_model_output(res_tyler)
+    res_tyler_raw = call_groq(prompt_for_model, body, MODEL_TYLER)
+    res_tyler_clean = sanitize_model_output(res_tyler_raw) if res_tyler_raw else ""
+    res_tyler = extract_clean_text(res_tyler_clean)
     if not res_tyler:
         res_tyler = "Przepraszam, wystąpił problem z generowaniem odpowiedzi."
 
@@ -257,8 +290,10 @@ def webhook():
         prompt_biz_template = "Jesteś uprzejmym Notariuszem. Przygotuj profesjonalną odpowiedź: {{USER_TEXT}}"
 
     prompt_biz_for_model = prompt_biz_template.replace("{{USER_TEXT}}", body[:3000])
-    res_biz = call_groq(prompt_biz_for_model, body, MODEL_BIZ)
-    res_biz = sanitize_model_output(res_biz)
+
+    res_biz_raw = call_groq(prompt_biz_for_model, body, MODEL_BIZ)
+    res_biz_clean = sanitize_model_output(res_biz_raw) if res_biz_raw else ""
+    res_biz = extract_clean_text(res_biz_clean)
     if not res_biz:
         res_biz = "Przepraszam, wystąpił problem z generowaniem odpowiedzi biznesowej."
 
@@ -278,7 +313,9 @@ def webhook():
         chosen_filename = f"{fallback_key}.pdf" if pdf_b64_biz else chosen_filename
 
     biz_section = {
-        "reply_html": build_html_reply(res_biz + ("\n\nRozpoznane zagadnienia: (zobacz załącznik)" if topic_pdf_key == "UNKNOWN" else "")),
+        "reply_html": build_html_reply(
+            res_biz + ("\n\nRozpoznane zagadnienia: (zobacz załącznik)" if topic_pdf_key == "UNKNOWN" else "")
+        ),
         "pdf": {
             "base64": pdf_b64_biz,
             "filename": chosen_filename
@@ -300,6 +337,7 @@ def webhook():
     )
 
     return jsonify(response_data), 200
+
 
 if __name__ == "__main__":
     if not GROQ_API_KEY:
