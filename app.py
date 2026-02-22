@@ -145,7 +145,8 @@ def call_groq(system_prompt: str, user_msg: str, model_name: str, timeout=20):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_msg}
         ],
-        "temperature": 0.0
+        "temperature": 0.0,
+        "max_tokens": 300  # ograniczamy odpowiedź
     }
 
     try:
