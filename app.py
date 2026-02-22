@@ -75,7 +75,7 @@ def extract_clean_text(text: str) -> str:
 
 
 # Konfiguracja
-GROQ_API_KEY = os.getenv("KLUCZ_GROQ")
+GROQ_API_KEY = os.getenv(" API_KEY_DEEPSEEK")
 MODEL_BIZ = os.getenv("MODEL_BIZ", "llama-3.3-70b-versatile")
 MODEL_TYLER = os.getenv("MODEL_TYLER", "llama-3.3-70b-versatile")
 
@@ -130,10 +130,10 @@ def safe_emoticon_and_pdf_for(emotion_key):
 # Wywołanie Groq (tekstowe)
 def call_groq(system_prompt: str, user_msg: str, model_name: str, timeout=20):
     if not GROQ_API_KEY:
-        app.logger.error("Brak KLUCZ_GROQ")
+        app.logger.error("Brak  API_KEY_DEEPSEEK")
         return None
 
-    url = "https://api.groq.com/openai/v1/chat/completions"
+    url = "https://api.deepseek.com/chat/completions"
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
@@ -342,5 +342,5 @@ def webhook():
 
 if __name__ == "__main__":
     if not GROQ_API_KEY:
-        app.logger.warning("KLUCZ_GROQ nie ustawiony (KLUCZ_GROQ). Backend będzie działał, ale wywołania AI zwrócą None.")
+        app.logger.warning(" API_KEY_DEEPSEEK nie ustawiony ( API_KEY_DEEPSEEK). Backend będzie działał, ale wywołania AI zwrócą None.")
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "10000")))
