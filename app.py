@@ -75,7 +75,7 @@ def extract_clean_text(text: str) -> str:
 
 
 # Konfiguracja
-GROQ_API_KEY = os.getenv(" API_KEY_DEEPSEEK")
+GROQ_API_KEY = os.getenv("API_KEY_DEEPSEEK")
 MODEL_BIZ = os.getenv("MODEL_BIZ", "llama-3.3-70b-versatile")
 MODEL_TYLER = os.getenv("MODEL_TYLER", "llama-3.3-70b-versatile")
 
