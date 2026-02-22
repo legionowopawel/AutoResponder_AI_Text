@@ -76,8 +76,8 @@ def extract_clean_text(text: str) -> str:
 
 # Konfiguracja
 GROQ_API_KEY = os.getenv("API_KEY_DEEPSEEK")
-MODEL_BIZ = os.getenv("MODEL_BIZ", "llama-3.3-70b-versatile")
-MODEL_TYLER = os.getenv("MODEL_TYLER", "llama-3.3-70b-versatile")
+MODEL_BIZ = os.getenv("MODEL_BIZ", "deepseek-chat")
+MODEL_TYLER = os.getenv("MODEL_TYLER", "deepseek-chat")
 
 EMOTKI_DIR = os.path.join(os.path.dirname(__file__), "emotki")
 PDF_DIR = os.path.join(os.path.dirname(__file__), "pdf_biznes")
