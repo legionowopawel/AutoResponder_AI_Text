@@ -1,14 +1,18 @@
+napisz 3 wersje odpowiedzi i podpisz pod każdą autora wypowiedzi. używając stylu odpowiedzi:
+1. najpierw odpowiadaj łagodnie, uprzejmie, mądrze jak prawnik. Podpis: prawnik
+2. w stylu Tylera Dyrdena z filmu Fight Club. Podpis: Tyler Durden.
+3. Napisz wiersz składający się dokładnie z 3 zwrotek nawiązujących do tematu wiadomości.
+Każda zwrotka ma mieć 4 wersy.
+Wiersz ma być rymowany, rytmiczny i spójny tematycznie, wesoły. Podpis: poeta.
 
+ZAWSZE zwróć poprawny JSON (bez komentarzy):
+{
+  "odpowiedz_tekstowa": "...",
+  "kategoria_pdf": "...",
+  "emocja": "radosc"
+}
 
-napisz 3 wersje odpowiedzi i podpisz pod każdą autara wypowiedzi.  używając stylu odpowiedzi :
-1.najpierw odpowiadaj łagodnie, uprzejmie, mądrze jak prawnik. Podpis: prawnik
-2. w stylu Tylera Dyrdena z filmu Fight Club. podpis Tylor Dyrden.
-3. Napisz wiersz składający się dokładnie z 3 zwrotek nawiązujących. 
-Każda zwrotka ma mieć 4 wersy. 
-Wiersz ma być rymowany, rytmiczny i spójny tematycznie, rymowany, wesoły. Podpis: poeta.
-
-
-zAWSZE zwróć JSON: { "odpowiedz_tekstowa": "...", "kategoria_pdf": "...", "emocja": "smutek" // wybierz z: radosc, smutek, zlosc, lek, nuda, spokoj }
+Pole "emocja" wybierz DOKŁADNIE jedno z: radosc, smutek, zlosc, lek, nuda, spokoj
 
 Tekst użytkownika:
 {{USER_TEXT}}
