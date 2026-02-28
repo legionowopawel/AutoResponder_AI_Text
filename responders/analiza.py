@@ -61,7 +61,7 @@ _COLOR_CSS = {
     WD_COLOR_INDEX.GRAY_25:      ("#c0c0c0", "#000"),
 }
 
-X_VAL = 2200  # domyślny zasięg powtórzeń w znakach
+X_VAL = 300  # domyślny zasięg powtórzeń w znakach
 
 
 # ── Stemizacja ────────────────────────────────────────────────────────────────
