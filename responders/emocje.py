@@ -18,6 +18,7 @@ Załączniki TXT:
 import io
 import re
 import os
+import gc
 import base64
 import tempfile
 from collections import Counter
@@ -331,9 +332,14 @@ def _word_freq(text: str) -> list:
 # ── Helpers wykresów ──────────────────────────────────────────────────────────
 def _fig_to_b64(fig) -> str:
     buf = io.BytesIO()
-    fig.savefig(buf, format="PNG", dpi=150, bbox_inches="tight")
+    fig.savefig(buf, format="PNG", dpi=80, bbox_inches="tight")
+    buf.seek(0)
+    result = base64.b64encode(buf.read()).decode("ascii")
+    buf.close()
     plt.close(fig)
-    return base64.b64encode(buf.getvalue()).decode("ascii")
+    plt.close("all")
+    gc.collect()
+    return result
 
 
 def _safe_label(text: str) -> str:
@@ -524,12 +530,15 @@ def _plot_wa_akapity(para_rows: list, title: str) -> str:
     if not para_rows:
         return None
 
-    # Jeśli 1 akapit — robimy zwykły słupkowy pos vs neg
-    x   = [r["idx"] for r in para_rows]
-    pos = [r["pos"] for r in para_rows]
-    neg = [r["neg"] for r in para_rows]
+    # Ogranicz do max 100 akapitów żeby nie tworzyć gigantycznych wykresów
+    rows = para_rows[:100]
 
-    fig, ax = plt.subplots(figsize=(max(10, len(x) * 0.4 + 2), 5))
+    x   = [r["idx"] for r in rows]
+    pos = [r["pos"] for r in rows]
+    neg = [r["neg"] for r in rows]
+
+    fig, ax = plt.subplots(figsize=(min(max(10, len(x) * 0.4 + 2), 30), 5))
+    width = 0.4
     width = 0.4
     bars_p = ax.bar(
         [i - width/2 for i in range(len(x))], pos,
@@ -751,6 +760,9 @@ def build_emocje_section(body: str, attachments: list = None) -> dict:
                 except Exception as e:
                     current_app.logger.warning(
                         "Emocje: błąd wykresu %s: %s", fname_prefix, e)
+                finally:
+                    plt.close("all")
+                    gc.collect()
 
             # ── Raporty TXT ───────────────────────────────────────────────────
             raport_txt = _build_raport_txt(
@@ -776,6 +788,10 @@ def build_emocje_section(body: str, attachments: list = None) -> dict:
         except Exception as e:
             current_app.logger.exception(
                 "Emocje: błąd analizy źródła '%s': %s", label, e)
+        finally:
+            # Zwolnij pamięć po każdym źródle
+            plt.close("all")
+            gc.collect()
 
     if not reply_html:
         reply_html = "<p>Nie udało się wygenerować analizy emocjonalnej.</p>"
