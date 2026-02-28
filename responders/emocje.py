@@ -1,20 +1,18 @@
 """
 responders/emocje.py
-Responder KEYWORDS4 — analiza emocjonalno-narracyjna tekstu.
+Responder KEYWORDS4 — analiza emocjonalno-narracyjna tekstu (książka/literatura).
 
-Obsługuje:
-- Treść maila (body)
-- Załączniki DOCX / DOC / PDF / TXT (jako base64 z Apps Script)
+Wykresy generowane dla każdego źródła:
+  W1   – radar 23 kategorii bezpośrednio (polskie nazwy)
+  W3   – słupki: sumy wystąpień słów z każdej puli biblioteki
+  WK   – kołowy: ukierunkowanie tekstu (wszystkie wskaźniki)
+  WB   – bilans: pozytywne vs negatywne vs neutralne (3 kawałki)
+  WE   – top 10 kategorii z przykładowymi słowami które wystąpiły w tekście
+  WA   – emocje per akapit: słupki pos/neg dla każdego akapitu (zastępuje W12)
 
-Generuje 4 wykresy PNG dla każdego źródła:
-- w1_radar_*        – radar makro-cech
-- w12_srednia_*     – linia średniej ruchomej emocji po akapitach
-- w3_kategorie_*    – słupki: sumy wystąpień słów z każdej puli biblioteki
-- wK_kolo_*         – wykres kołowy ze wszystkimi wskaźnikami
-
-Wyniki:
-- reply_html    – HTML z krótkim raportem tekstowym
-- images        – lista PNG (base64) do wysłania jako załączniki
+Załączniki TXT:
+  raport.txt              – szczegółowa analiza tekstowa
+  raport2_najwiecej_wyrazow.txt – ranking wszystkich słów: słowo (N)
 """
 
 import io
@@ -22,16 +20,18 @@ import re
 import os
 import base64
 import tempfile
+from collections import Counter
 from flask import current_app
 
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 
 # ── Opcjonalne zależności ─────────────────────────────────────────────────────
 try:
-    from docx import Document
+    from docx import Document as DocxDocument
     _HAS_DOCX = True
 except ImportError:
     _HAS_DOCX = False
@@ -49,11 +49,11 @@ try:
 except Exception:
     _SB = None
 
-# ── Ścieżka do katalogu biblioteka/ ──────────────────────────────────────────
+# ── Ścieżki ───────────────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIB_DIR  = os.path.join(BASE_DIR, "biblioteka")
 
-# ── Mapowanie plików biblioteki na etykiety ───────────────────────────────────
+# ── Kategorie biblioteki ──────────────────────────────────────────────────────
 CATEGORY_FILES = {
     "slowa_akcja.txt":               "akcja",
     "slowa_bliskosc.txt":            "bliskość",
@@ -80,25 +80,38 @@ CATEGORY_FILES = {
     "slowa_zaskoczenie.txt":         "zaskoczenie",
 }
 
-# ── Wbudowane listy fallback gdy brak plików ─────────────────────────────────
+# ── Polskie stopwords (pomijane w rankingu słów) ──────────────────────────────
+_STOPWORDS = {
+    "i","w","z","na","do","się","że","nie","to","jest","a","o","jak",
+    "przez","po","za","ale","już","tak","co","jego","jej","ich","go",
+    "mu","mi","mnie","my","wy","oni","one","ten","ta","te","tego","tej",
+    "temu","tą","tym","te","być","było","była","byli","będzie","będą",
+    "ze","przy","czy","też","tylko","jeszcze","bo","by","więc","oraz",
+    "dla","przed","nad","pod","między","nawet","kiedy","gdy","gdzie",
+    "który","która","które","którego","której","którzy","wszystko",
+    "tego","sobie","sam","swój","swoją","swoich","mój","moja","moje",
+    "twój","twoja","twoje","ich","nim","nich","nią","je","tu","tam",
+    "pan","pani","się","była","który","więcej","może","bardzo","no",
+}
+
+# ── Fallback listy emocji ─────────────────────────────────────────────────────
 _DOMYSLNE_POZ = [
-    "rado", "szczę", "uśmiech", "ciesz", "zachw", "entuzj", "miło", "koch",
-    "sukces", "wygr", "świet", "doskon", "przyjem", "spokoj", "ulga", "energia",
-    "radosn", "euforia", "triumf", "miłość", "przyjaź", "śmiech",
+    "radość","szczęście","uśmiech","cieszyć","zachwyt","entuzjazm",
+    "miłość","kochać","sukces","wygrać","świetny","doskonały",
+    "przyjemny","spokój","ulga","energia","triumf","przyjaźń","śmiech",
 ]
 _DOMYSLNE_NEG = [
-    "smut", "ból", "gniew", "wściek", "nienawi", "poraż", "zły", "strac",
-    "przeraż", "agres", "frustrac", "depres", "lęk", "strach", "żal",
-    "rozczarow", "bezsiln", "pustk", "krzyk", "oskarż",
+    "smutek","ból","gniew","wściekłość","nienawiść","porażka","zły",
+    "strach","przerażenie","agresja","frustracja","depresja","lęk",
+    "żal","rozczarowanie","bezsilność","pustka","krzyk","oskarżenie",
 ]
 
-# ── Polskie sufiksy do stemmera fallback ──────────────────────────────────────
 _POLISH_SUFFIXES = sorted([
-    "owania", "owanie", "owaniach", "owaniom", "owaniami",
-    "eniech", "eniem", "eniom", "enia", "enie",
-    "ach", "ami", "ego", "emu", "ej", "ie", "ią", "iąc",
-    "cie", "ów", "om", "a", "e", "y", "u", "i", "o",
-    "ł", "ła", "li", "ły", "sz",
+    "owania","owanie","owaniach","owaniom","owaniami",
+    "eniech","eniem","eniom","enia","enie",
+    "ach","ami","ego","emu","ej","ie","ią","iąc",
+    "cie","ów","om","a","e","y","u","i","o",
+    "ł","ła","li","ły","sz",
 ], key=lambda s: -len(s))
 
 
@@ -117,45 +130,48 @@ def _stem(word: str) -> str:
 
 
 def _tokenize(text: str):
-    return re.findall(r"[A-Za-ząćęłńóśżźĄĆĘŁŃÓŚŻŹ\-]+", text)
+    return re.findall(r"[A-Za-ząćęłńóśżźĄĆĘŁŃÓŚŻŹ]+", text)
 
 
-# ── Ładowanie biblioteki słów ─────────────────────────────────────────────────
+# ── Ładowanie biblioteki ──────────────────────────────────────────────────────
 def _load_wordlist(path: str, fallback=None):
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             return [
-                l.strip() for l in f
-                if l.strip() and not l.strip().startswith("#")
+                ln.strip() for ln in f
+                if ln.strip() and not ln.strip().startswith("#")
             ]
     return fallback or []
 
 
 def _load_categories() -> dict:
-    """Zwraca dict: {etykieta: set_stemów}"""
+    """Zwraca {etykieta: {'stems': set, 'words': list}}"""
     cats = {}
 
-    # Pozytywne / negatywne z osobnych plików lub fallback
     for key, fname, fb in [
         ("pozytywne", "slowa_pozytywne.txt", _DOMYSLNE_POZ),
         ("negatywne", "slowa_negatywne.txt", _DOMYSLNE_NEG),
     ]:
         words = _load_wordlist(os.path.join(LIB_DIR, fname), fb)
-        cats[key] = {_stem(w) for w in words if w}
+        cats[key] = {
+            "stems": {_stem(w) for w in words if w},
+            "words": words,
+        }
 
-    # Pozostałe kategorie z CATEGORY_FILES
     for fname, label in CATEGORY_FILES.items():
         words = _load_wordlist(os.path.join(LIB_DIR, fname), [])
-        cats[label] = {_stem(w) for w in words if w}
+        cats[label] = {
+            "stems": {_stem(w) for w in words if w},
+            "words": words,
+        }
 
     return cats
 
 
-# ── Ekstrakcja tekstu z załączników ──────────────────────────────────────────
+# ── Ekstrakcja tekstu ─────────────────────────────────────────────────────────
 def _extract_text_from_bytes(raw_bytes: bytes, name: str) -> str:
     name_lower = (name or "").lower()
 
-    # TXT
     if name_lower.endswith(".txt"):
         for enc in ("utf-8", "cp1250", "latin-1"):
             try:
@@ -164,55 +180,47 @@ def _extract_text_from_bytes(raw_bytes: bytes, name: str) -> str:
                 pass
         return raw_bytes.decode("utf-8", errors="ignore")
 
-    # DOCX
     if name_lower.endswith(".docx") and _HAS_DOCX:
         try:
-            doc   = Document(io.BytesIO(raw_bytes))
+            doc   = DocxDocument(io.BytesIO(raw_bytes))
             parts = [p.text for p in doc.paragraphs if p.text.strip()]
             for tbl in doc.tables:
                 for row in tbl.rows:
-                    cell_text = " | ".join(
+                    ct = " | ".join(
                         c.text.strip() for c in row.cells if c.text.strip()
                     )
-                    if cell_text:
-                        parts.append(cell_text)
+                    if ct:
+                        parts.append(ct)
             return "\n\n".join(parts)
         except Exception as e:
             current_app.logger.warning("Błąd DOCX %s: %s", name, e)
 
-    # DOC (stary format Word) – przez docx2txt
     if name_lower.endswith(".doc"):
         if _HAS_DOCX2TXT:
             tmp_path = None
             try:
-                with tempfile.NamedTemporaryFile(
-                    suffix=".doc", delete=False
-                ) as tmp:
+                with tempfile.NamedTemporaryFile(suffix=".doc", delete=False) as tmp:
                     tmp.write(raw_bytes)
                     tmp_path = tmp.name
                 text = docx2txt.process(tmp_path)
                 if text and text.strip():
                     return text
             except Exception as e:
-                current_app.logger.warning("Błąd DOC (docx2txt) %s: %s", name, e)
+                current_app.logger.warning("Błąd DOC %s: %s", name, e)
             finally:
                 if tmp_path and os.path.exists(tmp_path):
                     os.unlink(tmp_path)
-        # Fallback: spróbuj jako DOCX (czasem działa dla nowszych .doc)
         if _HAS_DOCX:
             try:
-                doc   = Document(io.BytesIO(raw_bytes))
+                doc   = DocxDocument(io.BytesIO(raw_bytes))
                 parts = [p.text for p in doc.paragraphs if p.text.strip()]
                 if parts:
                     return "\n\n".join(parts)
             except Exception:
                 pass
         current_app.logger.warning(
-            "Plik .doc '%s' nieobsługiwany — brak docx2txt. "
-            "Wyślij jako .docx.", name
-        )
+            "Plik .doc '%s' – brak docx2txt. Wyślij jako .docx.", name)
 
-    # PDF – pdfplumber, potem pypdf
     if name_lower.endswith(".pdf"):
         text = ""
         try:
@@ -242,40 +250,65 @@ def _extract_text_from_bytes(raw_bytes: bytes, name: str) -> str:
 
 # ── Analiza tekstu ────────────────────────────────────────────────────────────
 def _analyze_paragraphs(text: str, cats: dict) -> list:
-    """
-    Dzieli tekst na akapity i zlicza rdzenie z każdej kategorii.
-    Zwraca listę dict: {idx, pos, neg, emotion_score, kat1: n, ...}
-    """
     paragraphs = [p.strip() for p in re.split(r"\n{2,}", text) if p.strip()]
     if not paragraphs:
-        paragraphs = [l.strip() for l in text.splitlines() if l.strip()]
+        paragraphs = [ln.strip() for ln in text.splitlines() if ln.strip()]
     if not paragraphs:
         return []
 
-    base_pos = cats.get("pozytywne", set())
-    base_neg = cats.get("negatywne", set())
+    pos_stems = cats.get("pozytywne", {}).get("stems", set())
+    neg_stems = cats.get("negatywne", {}).get("stems", set())
 
     results = []
     for idx, para in enumerate(paragraphs, start=1):
         tokens = _tokenize(para)
         stems  = [_stem(t) for t in tokens]
-        pos    = sum(1 for s in stems if s in base_pos)
-        neg    = sum(1 for s in stems if s in base_neg)
-        row    = {"idx": idx, "pos": pos, "neg": neg, "emotion_score": pos - neg}
-        for label, stemset in cats.items():
-            row[label] = sum(1 for s in stems if s in stemset) if stemset else 0
+        pos    = sum(1 for s in stems if s in pos_stems)
+        neg    = sum(1 for s in stems if s in neg_stems)
+        row    = {
+            "idx": idx,
+            "text": para[:120],
+            "pos": pos,
+            "neg": neg,
+            "emotion_score": pos - neg,
+        }
+        for label, cdata in cats.items():
+            stemset = cdata.get("stems", set())
+            # zbierz też konkretne słowa które wystąpiły
+            hit_words = [t for t, s in zip(tokens, stems) if s in stemset]
+            row[label]              = len(hit_words)
+            row[label + "__hits"]   = hit_words[:8]   # max 8 przykładów
         results.append(row)
 
     return results
 
 
 def _aggregate(para_rows: list, cats: dict) -> dict:
-    """Sumuje wystąpienia każdej kategorii ze wszystkich akapitów."""
     totals = {label: 0 for label in cats}
     for row in para_rows:
         for label in cats:
             totals[label] = totals.get(label, 0) + row.get(label, 0)
     return totals
+
+
+def _aggregate_hits(para_rows: list, cats: dict) -> dict:
+    """Zbiera unikalne słowa-przykłady dla każdej kategorii."""
+    hits = {label: [] for label in cats}
+    for row in para_rows:
+        for label in cats:
+            hits[label] += row.get(label + "__hits", [])
+    # deduplikacja, zachowaj kolejność
+    unique = {}
+    for label in cats:
+        seen = set()
+        uniq = []
+        for w in hits[label]:
+            wl = w.lower()
+            if wl not in seen:
+                seen.add(wl)
+                uniq.append(w)
+        unique[label] = uniq[:10]
+    return unique
 
 
 def _percentages(totals: dict) -> dict:
@@ -285,19 +318,14 @@ def _percentages(totals: dict) -> dict:
     return {k: v / total_all * 100.0 for k, v in totals.items()}
 
 
-# ── Makro-cechy do radaru ─────────────────────────────────────────────────────
-def _macro_dimensions(perc: dict) -> dict:
-    def g(*names):
-        return sum(perc.get(n, 0.0) for n in names)
-    return {
-        "worldbuilding": g("wzrok", "słuch", "dotyk", "intensywność_niska"),
-        "characters":    g("dominacja", "uległość", "bliskość", "dystans",
-                           "współczucie", "duma"),
-        "dynamics":      g("akcja", "dialog", "intensywność_wysoka"),
-        "style":         g("formalne", "refleksja"),
-        "philosophy":    g("moralność_pozytywna", "moralność_negatywna",
-                           "pewność", "wątpliwość"),
-    }
+def _word_freq(text: str) -> list:
+    """Zwraca listę (słowo, count) posortowaną malejąco, bez stopwords."""
+    tokens = _tokenize(text)
+    filtered = [
+        t.lower() for t in tokens
+        if len(t) > 2 and t.lower() not in _STOPWORDS
+    ]
+    return Counter(filtered).most_common()
 
 
 # ── Helpers wykresów ──────────────────────────────────────────────────────────
@@ -309,60 +337,42 @@ def _fig_to_b64(fig) -> str:
 
 
 def _safe_label(text: str) -> str:
-    return re.sub(r'[\\/*?:"<>|]', "_", text)[:40]
+    return re.sub(r'[\\/*?:"<>|,. ]', "_", text)[:40]
 
 
-# ── W1 – radar makro-cech ─────────────────────────────────────────────────────
-def _plot_w1_radar(perc: dict, title: str) -> str:
-    dims   = _macro_dimensions(perc)
-    labels = list(dims.keys())
-    vals   = [dims[k] for k in labels] + [dims[labels[0]]]
-    angles = np.linspace(0, 2 * np.pi, len(labels) + 1)
+def _cat_colors(n: int):
+    c1 = list(plt.cm.tab20(np.linspace(0, 1, min(n, 20))))
+    c2 = list(plt.cm.tab20b(np.linspace(0, 1, max(1, n - 20))))
+    return (c1 + c2)[:n]
 
-    fig = plt.figure(figsize=(7, 7))
+
+# ── W1 – radar bezpośrednio wszystkich 23 kategorii ──────────────────────────
+def _plot_w1_radar(totals: dict, title: str) -> str:
+    # Tylko kategorie z CATEGORY_FILES (bez pozytywne/negatywne)
+    labels = [label for label in CATEGORY_FILES.values() if label in totals]
+    vals   = [totals.get(l, 0) for l in labels]
+
+    if not any(v > 0 for v in vals):
+        return None
+
+    n      = len(labels)
+    angles = np.linspace(0, 2 * np.pi, n, endpoint=False).tolist()
+    vals_c = vals + [vals[0]]
+    angles_c = angles + [angles[0]]
+
+    fig = plt.figure(figsize=(10, 10))
     ax  = plt.subplot(111, polar=True)
-    ax.plot(angles, vals, linewidth=2, color="steelblue")
-    ax.fill(angles, vals, alpha=0.25, color="steelblue")
-    ax.set_xticks(angles[:-1])
-    ax.set_xticklabels(labels, fontsize=10)
-    ax.set_title(f"Profil cech narracyjnych\n{title}", y=1.10, fontsize=11)
+    ax.plot(angles_c, vals_c, linewidth=2, color="steelblue")
+    ax.fill(angles_c, vals_c, alpha=0.25, color="steelblue")
+    ax.set_xticks(angles)
+    ax.set_xticklabels(labels, fontsize=8)
+    ax.set_title(f"Radar 23 kategorii narracyjnych\n{title}", y=1.08, fontsize=11)
     ax.grid(True)
     fig.tight_layout()
     return _fig_to_b64(fig)
 
 
-# ── W12 – średnia ruchoma emocji ─────────────────────────────────────────────
-def _plot_w12_srednia(para_rows: list, title: str) -> str:
-    if not para_rows:
-        return None
-    x      = [r["idx"] for r in para_rows]
-    scores = [r["emotion_score"] for r in para_rows]
-    window = min(5, len(scores))
-
-    ma = []
-    for i in range(len(scores)):
-        start = max(0, i - window + 1)
-        ma.append(sum(scores[start:i + 1]) / (i - start + 1))
-
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(x, ma, color="steelblue", linewidth=2, label="Śr. ruchoma")
-    ax.axhline(0, color="gray", linewidth=0.8, linestyle="--")
-    ax.fill_between(x, ma, 0,
-                    where=[v >= 0 for v in ma],
-                    alpha=0.3, color="tab:green", label="Pozytywne")
-    ax.fill_between(x, ma, 0,
-                    where=[v < 0 for v in ma],
-                    alpha=0.3, color="tab:red", label="Negatywne")
-    ax.set_xlabel("Akapit")
-    ax.set_ylabel(f"Śr. ruchoma emocji (okno={window})")
-    ax.set_title(f"Przebieg emocji\n{title}", fontsize=11)
-    ax.legend(fontsize=9)
-    ax.grid(alpha=0.3)
-    fig.tight_layout()
-    return _fig_to_b64(fig)
-
-
-# ── W3 – sumy wystąpień ze wszystkich kategorii biblioteki ───────────────────
+# ── W3 – słupki kategorii ────────────────────────────────────────────────────
 def _plot_w3_kategorie(totals: dict, title: str) -> str:
     items  = sorted(totals.items(), key=lambda kv: kv[1], reverse=True)
     labels = [k for k, _ in items]
@@ -372,12 +382,10 @@ def _plot_w3_kategorie(totals: dict, title: str) -> str:
         return None
 
     n      = len(labels)
-    colors = plt.cm.tab20(np.linspace(0, 1, min(n, 20)))
-    if n > 20:
-        colors = list(colors) + list(plt.cm.tab20b(np.linspace(0, 1, n - 20)))
+    colors = _cat_colors(n)
 
-    fig, ax = plt.subplots(figsize=(13, 6))
-    bars = ax.bar(range(n), vals, color=colors[:n])
+    fig, ax = plt.subplots(figsize=(14, 6))
+    bars = ax.bar(range(n), vals, color=colors)
     ax.set_xticks(range(n))
     ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
     ax.set_ylabel("Suma wystąpień")
@@ -387,7 +395,7 @@ def _plot_w3_kategorie(totals: dict, title: str) -> str:
         if val > 0:
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 0.1,
+                bar.get_height() + 0.05,
                 str(int(val)),
                 ha="center", va="bottom", fontsize=7,
             )
@@ -395,7 +403,7 @@ def _plot_w3_kategorie(totals: dict, title: str) -> str:
     return _fig_to_b64(fig)
 
 
-# ── WK – kołowy wykres ukierunkowania tekstu ──────────────────────────────────
+# ── WK – kołowy wszystkich wskaźników ────────────────────────────────────────
 def _plot_wK_kolo(perc: dict, title: str) -> str:
     items = [(k, v) for k, v in perc.items() if v > 0.01]
     if not items:
@@ -405,19 +413,13 @@ def _plot_wK_kolo(perc: dict, title: str) -> str:
     labels = [k for k, _ in items]
     vals   = [v for _, v in items]
     n      = len(labels)
-
-    cmap1  = list(plt.cm.tab20(np.linspace(0, 1, min(n, 20))))
-    cmap2  = list(plt.cm.tab20b(np.linspace(0, 1, max(0, n - 20))))
-    colors = (cmap1 + cmap2)[:n]
+    colors = _cat_colors(n)
 
     fig, ax = plt.subplots(figsize=(10, 10))
-    wedges, texts, autotexts = ax.pie(
-        vals,
-        labels=None,
-        colors=colors,
+    wedges, _, autotexts = ax.pie(
+        vals, labels=None, colors=colors,
         autopct=lambda p: f"{p:.1f}%" if p > 2.5 else "",
-        startangle=90,
-        pctdistance=0.80,
+        startangle=90, pctdistance=0.80,
         wedgeprops={"linewidth": 0.5, "edgecolor": "white"},
     )
     for at in autotexts:
@@ -427,66 +429,258 @@ def _plot_wK_kolo(perc: dict, title: str) -> str:
     ax.legend(
         wedges, legend_labels,
         title="Wskaźniki", title_fontsize=9,
-        loc="center left", bbox_to_anchor=(1.0, 0.5),
-        fontsize=8,
+        loc="center left", bbox_to_anchor=(1.0, 0.5), fontsize=8,
     )
-
     ax.text(0, 0, f"▶ {labels[0]}",
             ha="center", va="center",
             fontsize=12, fontweight="bold", color="#222222")
-
     ax.set_title(f"Ukierunkowanie tekstu – wszystkie wskaźniki\n{title}",
                  fontsize=12)
     fig.tight_layout()
     return _fig_to_b64(fig)
 
 
-# ── Raport HTML ───────────────────────────────────────────────────────────────
-def _build_report_html(label: str, totals: dict, perc: dict,
-                       para_count: int) -> str:
-    total_words = sum(totals.values())
-    top3    = sorted(perc.items(), key=lambda kv: kv[1], reverse=True)[:3]
-    top3_str = ", ".join(f"<b>{k}</b> ({v:.1f}%)" for k, v in top3)
+# ── WB – bilans emocjonalny (3 kawałki) ──────────────────────────────────────
+def _plot_wb_bilans(totals: dict, title: str) -> str:
+    pos = totals.get("pozytywne", 0)
+    neg = totals.get("negatywne", 0)
+    # neutralne = wszystkie inne kategorie
+    other = sum(v for k, v in totals.items()
+                if k not in ("pozytywne", "negatywne"))
 
+    total = pos + neg + other
+    if total == 0:
+        return None
+
+    labels_b = ["Pozytywne", "Negatywne", "Neutralne/inne"]
+    vals_b   = [pos, neg, other]
+    colors_b = ["#4CAF50", "#F44336", "#90CAF9"]
+    explode  = (0.05, 0.05, 0.0)
+
+    fig, ax = plt.subplots(figsize=(7, 7))
+    wedges, _, autotexts = ax.pie(
+        vals_b, labels=labels_b, colors=colors_b,
+        autopct="%1.1f%%", explode=explode, startangle=90,
+        textprops={"fontsize": 13},
+        wedgeprops={"linewidth": 1, "edgecolor": "white"},
+    )
+    for at in autotexts:
+        at.set_fontsize(12)
+
+    bilans = "POZYTYWNY" if pos > neg else ("NEGATYWNY" if neg > pos else "NEUTRALNY")
+    kolor  = "#4CAF50" if pos > neg else ("#F44336" if neg > pos else "#90CAF9")
+    ax.text(0, 0, bilans,
+            ha="center", va="center",
+            fontsize=14, fontweight="bold", color=kolor)
+
+    ax.set_title(f"Bilans emocjonalny tekstu\n{title}", fontsize=12)
+    fig.tight_layout()
+    return _fig_to_b64(fig)
+
+
+# ── WE – top 10 kategorii z przykładowymi słowami ────────────────────────────
+def _plot_we_przyklady(totals: dict, hits: dict, title: str) -> str:
+    top10 = sorted(
+        [(k, v) for k, v in totals.items() if v > 0],
+        key=lambda kv: kv[1], reverse=True
+    )[:10]
+
+    if not top10:
+        return None
+
+    labels = [k for k, _ in top10]
+    vals   = [v for _, v in top10]
+    n      = len(labels)
+    colors = _cat_colors(n)
+
+    fig, ax = plt.subplots(figsize=(14, 7))
+    bars = ax.barh(range(n), vals, color=colors, height=0.6)
+    ax.set_yticks(range(n))
+    ax.set_yticklabels(labels, fontsize=10)
+    ax.invert_yaxis()
+    ax.set_xlabel("Liczba wystąpień")
+    ax.set_title(f"Top 10 kategorii – przykładowe słowa z tekstu\n{title}",
+                 fontsize=11)
+
+    for i, (bar, lbl, val) in enumerate(zip(bars, labels, vals)):
+        # liczba po prawej
+        ax.text(val + 0.05, bar.get_y() + bar.get_height() / 2,
+                str(int(val)), va="center", fontsize=9)
+        # przykładowe słowa pod słupkiem
+        przykl = hits.get(lbl, [])[:6]
+        if przykl:
+            ax.text(0.3, bar.get_y() + bar.get_height() / 2,
+                    "  »  " + ", ".join(przykl),
+                    va="center", fontsize=8, color="#555555",
+                    style="italic")
+
+    ax.grid(axis="x", alpha=0.3)
+    fig.tight_layout()
+    return _fig_to_b64(fig)
+
+
+# ── WA – emocje per akapit (zastępuje W12) ────────────────────────────────────
+def _plot_wa_akapity(para_rows: list, title: str) -> str:
+    if not para_rows:
+        return None
+
+    # Jeśli 1 akapit — robimy zwykły słupkowy pos vs neg
+    x   = [r["idx"] for r in para_rows]
+    pos = [r["pos"] for r in para_rows]
+    neg = [r["neg"] for r in para_rows]
+
+    fig, ax = plt.subplots(figsize=(max(10, len(x) * 0.4 + 2), 5))
+    width = 0.4
+    bars_p = ax.bar(
+        [i - width/2 for i in range(len(x))], pos,
+        width=width, color="#4CAF50", label="Pozytywne", alpha=0.85
+    )
+    bars_n = ax.bar(
+        [i + width/2 for i in range(len(x))], neg,
+        width=width, color="#F44336", label="Negatywne", alpha=0.85
+    )
+
+    ax.set_xticks(range(len(x)))
+    ax.set_xticklabels([f"Ak.{i}" for i in x], rotation=45, fontsize=7)
+    ax.set_ylabel("Liczba słów emocjonalnych")
+    ax.set_title(f"Emocje pozytywne vs negatywne per akapit\n{title}",
+                 fontsize=11)
+    ax.legend(fontsize=9)
+    ax.grid(axis="y", alpha=0.3)
+
+    # Dodaj etykiety wartości
+    for bar in bars_p:
+        h = bar.get_height()
+        if h > 0:
+            ax.text(bar.get_x() + bar.get_width()/2, h + 0.05,
+                    str(int(h)), ha="center", va="bottom", fontsize=7)
+    for bar in bars_n:
+        h = bar.get_height()
+        if h > 0:
+            ax.text(bar.get_x() + bar.get_width()/2, h + 0.05,
+                    str(int(h)), ha="center", va="bottom", fontsize=7,
+                    color="#C62828")
+
+    fig.tight_layout()
+    return _fig_to_b64(fig)
+
+
+# ── Raport TXT ────────────────────────────────────────────────────────────────
+def _build_raport_txt(label: str, text: str, totals: dict, perc: dict,
+                      hits: dict, para_rows: list) -> str:
+    linia = "=" * 60
+    linia2 = "-" * 60
+
+    pos_p = perc.get("pozytywne", 0.0)
+    neg_p = perc.get("negatywne", 0.0)
+    bilans = ("POZYTYWNY" if pos_p > neg_p
+              else "NEGATYWNY" if neg_p > pos_p else "NEUTRALNY")
+
+    total_hits  = sum(totals.values())
+    total_words = sum(len(_tokenize(r["text"])) for r in para_rows)
+
+    lines = [
+        linia,
+        f"ANALIZA EMOCJONALNO-NARRACYJNA TEKSTU",
+        f"Źródło: {label}",
+        linia,
+        f"Akapitów:            {len(para_rows)}",
+        f"Słów w tekście:      ~{total_words}",
+        f"Wykrytych wskaźników:{total_hits}",
+        f"Bilans emocjonalny:  {bilans}",
+        f"  pozytywne: {pos_p:.1f}%  |  negatywne: {neg_p:.1f}%",
+        "",
+        linia2,
+        "RANKING KATEGORII (od najczęstszej):",
+        linia2,
+    ]
+
+    ranked = sorted(totals.items(), key=lambda kv: kv[1], reverse=True)
+    for rank, (cat, cnt) in enumerate(ranked, start=1):
+        if cnt == 0:
+            continue
+        pct    = perc.get(cat, 0.0)
+        bar    = "█" * min(int(pct * 2), 40)
+        przykl = ", ".join(hits.get(cat, [])[:6]) or "—"
+        lines.append(f"{rank:>3}. {cat:<28} {cnt:>4}x  ({pct:5.1f}%)  {bar}")
+        lines.append(f"     przykłady: {przykl}")
+        lines.append("")
+
+    lines += [
+        linia2,
+        "ANALIZA PER AKAPIT (pierwsze 20):",
+        linia2,
+    ]
+    for row in para_rows[:20]:
+        score = row["emotion_score"]
+        znak  = "+" if score > 0 else ("" if score == 0 else "")
+        lines.append(
+            f"[Ak.{row['idx']:>3}]  pos={row['pos']}  neg={row['neg']}  "
+            f"score={znak}{score:+d}  |  {row['text'][:80]}..."
+        )
+
+    lines += [
+        "",
+        linia,
+        "Raport wygenerowany automatycznie przez system analizy emocjonalnej.",
+        linia,
+    ]
+
+    return "\n".join(lines)
+
+
+def _build_ranking_txt(text: str, label: str) -> str:
+    """Ranking najczęstszych słów: słowo (N)"""
+    freq = _word_freq(text)
+    lines = [
+        f"# Ranking słów — {label}",
+        f"# Wygenerowano automatycznie",
+        "",
+    ]
+    for word, cnt in freq:
+        lines.append(f"{word} ({cnt})")
+    return "\n".join(lines)
+
+
+# ── HTML dla maila ────────────────────────────────────────────────────────────
+def _build_reply_html(label: str, totals: dict, perc: dict,
+                      para_count: int) -> str:
+    total = sum(totals.values())
+    top5  = sorted(perc.items(), key=lambda kv: kv[1], reverse=True)[:5]
+    top5_str = ", ".join(
+        f"<b>{k}</b> ({v:.1f}%)" for k, v in top5 if v > 0
+    )
     pos_p  = perc.get("pozytywne", 0.0)
     neg_p  = perc.get("negatywne", 0.0)
-    bilans = ("pozytywne" if pos_p > neg_p
-              else "negatywne" if neg_p > pos_p
-              else "neutralne")
+    bilans = ("pozytywne ✅" if pos_p > neg_p
+              else "negatywne ⚠️" if neg_p > pos_p else "neutralne")
 
     return (
-        f"<p><strong>Analiza emocjonalna: {label}</strong></p>"
-        f"<p>Akapitów: {para_count} | Wykrytych rdzeni słownych: {total_words}</p>"
+        f"<p><strong>📊 Analiza emocjonalno-narracyjna: {label}</strong></p>"
+        f"<p>Akapitów: <b>{para_count}</b> | "
+        f"Wykrytych wskaźników: <b>{total}</b></p>"
         f"<p>Bilans emocjonalny: <b>{bilans}</b> "
-        f"(pozytywne {pos_p:.1f}% / negatywne {neg_p:.1f}%)</p>"
-        f"<p>Dominujące kategorie: {top3_str}</p>"
-        f"<p><em>Wykresy w załącznikach PNG:</em><br>"
-        f"&bull; W1 – Profil radarowy cech narracyjnych<br>"
-        f"&bull; W12 – Przebieg emocji (średnia ruchoma)<br>"
-        f"&bull; W3 – Sumy słów z każdej puli biblioteki<br>"
-        f"&bull; WK – Kołowy wykres ukierunkowania tekstu</p>"
+        f"(+{pos_p:.1f}% / -{neg_p:.1f}%)</p>"
+        f"<p>Dominujące kategorie: {top5_str}</p>"
+        f"<p><em>Załączniki:</em><br>"
+        f"&bull; <b>W1</b> – Radar 23 kategorii narracyjnych<br>"
+        f"&bull; <b>W3</b> – Słupki: sumy wystąpień ze wszystkich puli<br>"
+        f"&bull; <b>WK</b> – Kołowy: ukierunkowanie tekstu<br>"
+        f"&bull; <b>WB</b> – Bilans: pozytywne / negatywne / inne<br>"
+        f"&bull; <b>WE</b> – Top 10 kategorii z przykładowymi słowami<br>"
+        f"&bull; <b>WA</b> – Emocje pozytywne vs negatywne per akapit<br>"
+        f"&bull; <b>raport.txt</b> – Szczegółowa analiza tekstowa<br>"
+        f"&bull; <b>raport2_najwiecej_wyrazow.txt</b> – Ranking słów</p>"
         f"<hr>"
     )
 
 
 # ── Główna funkcja responderu ─────────────────────────────────────────────────
 def build_emocje_section(body: str, attachments: list = None) -> dict:
-    """
-    Buduje sekcję 'emocje':
-    - analizuje treść maila i każdy załącznik osobno
-    - generuje 4 wykresy PNG dla każdego źródła
-    - zwraca HTML z raportem + listę PNG (base64)
-
-    Parametry:
-        body        – treść maila (str)
-        attachments – lista dict [{base64: ..., name: ...}]
-
-    Zwraca:
-        {"reply_html": str, "images": [{base64, filename, content_type}, ...]}
-    """
     cats = _load_categories()
 
     images     = []
+    docs       = []   # załączniki TXT (raporty)
     reply_html = ""
     sources    = []
 
@@ -505,8 +699,7 @@ def build_emocje_section(body: str, attachments: list = None) -> dict:
                 sources.append((att_name, txt))
             else:
                 current_app.logger.warning(
-                    "Emocje: brak tekstu w załączniku %s "
-                    "(format nieobsługiwany lub pusty plik)", att_name)
+                    "Emocje: brak tekstu w załączniku %s", att_name)
         except Exception as e:
             current_app.logger.warning(
                 "Emocje: błąd załącznika %s: %s", att_name, e)
@@ -515,10 +708,10 @@ def build_emocje_section(body: str, attachments: list = None) -> dict:
         return {
             "reply_html": (
                 "<p>Brak tekstu do analizy emocjonalnej.</p>"
-                "<p><em>Wskazówka: pliki .doc wyślij jako .docx "
-                "lub zainstaluj docx2txt na serwerze.</em></p>"
+                "<p><em>Pliki .doc wyślij jako .docx.</em></p>"
             ),
             "images": [],
+            "docs":   [],
         }
 
     for label, text in sources:
@@ -526,46 +719,59 @@ def build_emocje_section(body: str, attachments: list = None) -> dict:
             para_rows = _analyze_paragraphs(text, cats)
             if not para_rows:
                 current_app.logger.warning(
-                    "Emocje: brak akapitów w źródle '%s'", label)
+                    "Emocje: brak akapitów w '%s'", label)
                 continue
 
             totals = _aggregate(para_rows, cats)
+            hits   = _aggregate_hits(para_rows, cats)
             perc   = _percentages(totals)
             sl     = _safe_label(label)
 
-            b64 = _plot_w1_radar(perc, label)
-            if b64:
-                images.append({
-                    "base64":       b64,
-                    "filename":     f"w1_radar_{sl}.png",
-                    "content_type": "image/png",
-                })
+            # ── 6 wykresów ────────────────────────────────────────────────────
+            for fn, fname_prefix in [
+                (_plot_w1_radar,      "w1_radar"),
+                (lambda p, t: _plot_w3_kategorie(totals, t), "w3_kategorie"),
+                (lambda p, t: _plot_wK_kolo(perc, t),        "wK_kolo"),
+                (lambda p, t: _plot_wb_bilans(totals, t),    "wB_bilans"),
+                (lambda p, t: _plot_we_przyklady(totals, hits, t), "wE_przyklady"),
+                (lambda p, t: _plot_wa_akapity(para_rows, t),"wA_akapity"),
+            ]:
+                try:
+                    # w1_radar wymaga totals a nie perc
+                    if fname_prefix == "w1_radar":
+                        b64 = _plot_w1_radar(totals, label)
+                    else:
+                        b64 = fn(perc, label)
+                    if b64:
+                        images.append({
+                            "base64":       b64,
+                            "filename":     f"{fname_prefix}_{sl}.png",
+                            "content_type": "image/png",
+                        })
+                except Exception as e:
+                    current_app.logger.warning(
+                        "Emocje: błąd wykresu %s: %s", fname_prefix, e)
 
-            b64 = _plot_w12_srednia(para_rows, label)
-            if b64:
-                images.append({
-                    "base64":       b64,
-                    "filename":     f"w12_srednia_{sl}.png",
-                    "content_type": "image/png",
-                })
+            # ── Raporty TXT ───────────────────────────────────────────────────
+            raport_txt = _build_raport_txt(
+                label, text, totals, perc, hits, para_rows
+            )
+            docs.append({
+                "base64":       base64.b64encode(
+                    raport_txt.encode("utf-8")).decode("ascii"),
+                "filename":     f"raport_{sl}.txt",
+                "content_type": "text/plain",
+            })
 
-            b64 = _plot_w3_kategorie(totals, label)
-            if b64:
-                images.append({
-                    "base64":       b64,
-                    "filename":     f"w3_kategorie_{sl}.png",
-                    "content_type": "image/png",
-                })
+            ranking_txt = _build_ranking_txt(text, label)
+            docs.append({
+                "base64":       base64.b64encode(
+                    ranking_txt.encode("utf-8")).decode("ascii"),
+                "filename":     f"raport2_najwiecej_wyrazow_{sl}.txt",
+                "content_type": "text/plain",
+            })
 
-            b64 = _plot_wK_kolo(perc, label)
-            if b64:
-                images.append({
-                    "base64":       b64,
-                    "filename":     f"wK_kolo_{sl}.png",
-                    "content_type": "image/png",
-                })
-
-            reply_html += _build_report_html(label, totals, perc, len(para_rows))
+            reply_html += _build_reply_html(label, totals, perc, len(para_rows))
 
         except Exception as e:
             current_app.logger.exception(
@@ -575,9 +781,12 @@ def build_emocje_section(body: str, attachments: list = None) -> dict:
         reply_html = "<p>Nie udało się wygenerować analizy emocjonalnej.</p>"
 
     current_app.logger.info(
-        "Emocje: źródeł=%d | wykresów=%d", len(sources), len(images))
+        "Emocje: źródeł=%d | wykresów=%d | raportów=%d",
+        len(sources), len(images), len(docs),
+    )
 
     return {
         "reply_html": reply_html,
         "images":     images,
+        "docs":       docs,
     }
