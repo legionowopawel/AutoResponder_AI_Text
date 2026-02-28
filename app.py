@@ -16,6 +16,7 @@ from flask import Flask, request, jsonify
 from responders.zwykly   import build_zwykly_section
 from responders.biznes   import build_biznes_section
 from responders.scrabble import build_scrabble_section
+from responders.analiza  import build_analiza_section
 
 app = Flask(__name__)
 
@@ -38,12 +39,21 @@ def webhook():
     if data.get("wants_scrabble"):
         response_data["scrabble"] = build_scrabble_section(body)
 
+    # ── Analiza powtórzeń (flaga wants_analiza z Apps Script) ─────────────────
+    if data.get("wants_analiza"):
+        attachment_b64  = data.get("attachment_b64")   # DOCX od nadawcy (base64)
+        attachment_name = data.get("attachment_name")  # nazwa pliku
+        response_data["analiza"] = build_analiza_section(
+            body, attachment_b64, attachment_name
+        )
+
     # ── Logowanie ─────────────────────────────────────────────────────────────
     app.logger.info(
-        "Response: biznes.pdf=%s | zwykly.pdf=%s | scrabble=%s",
+        "Response: biznes.pdf=%s | zwykly.pdf=%s | scrabble=%s | analiza=%s",
         bool(response_data["biznes"].get("pdf",   {}).get("base64")),
         bool(response_data["zwykly"].get("pdf",   {}).get("base64")),
         "tak" if "scrabble" in response_data else "nie",
+        "tak" if "analiza"  in response_data else "nie",
     )
 
     return jsonify(response_data), 200
