@@ -119,6 +119,7 @@ function executeAnalizaMailSend(data, recipient, subject, msg) {
 }
 
 // ── Wysyłka: analiza emocjonalna PNG ─────────────────────────────────────────
+// ── Wysyłka: analiza emocjonalna PNG + raporty TXT ────────────────────────────
 function executeEmocjeMailSend(data, recipient, subject, msg) {
   if (!data) {
     console.warn("Brak danych emocji dla " + recipient);
@@ -126,8 +127,9 @@ function executeEmocjeMailSend(data, recipient, subject, msg) {
   }
 
   var attachments = [];
-  var images = data.images || [];
 
+  // Wykresy PNG
+  var images = data.images || [];
   for (var i = 0; i < images.length; i++) {
     var img = images[i];
     if (!img || !img.base64) continue;
@@ -142,16 +144,34 @@ function executeEmocjeMailSend(data, recipient, subject, msg) {
     }
   }
 
+  // Raporty TXT
+  var docs = data.docs || [];
+  for (var j = 0; j < docs.length; j++) {
+    var doc = docs[j];
+    if (!doc || !doc.base64) continue;
+    try {
+      attachments.push(Utilities.newBlob(
+        Utilities.base64Decode(doc.base64),
+        doc.content_type || "text/plain",
+        doc.filename     || ("raport_" + (j + 1) + ".txt")
+      ));
+    } catch (e) {
+      console.error("Błąd raportu TXT [" + j + "]: " + e.message);
+    }
+  }
+
   var htmlBody = data.reply_html || "<p>Analiza emocjonalna w załącznikach.</p>";
+
   try {
     msg.reply("", {
       htmlBody:    htmlBody,
       attachments: attachments,
       name:        "Analiza Emocjonalna – Autoresponder"
     });
-    console.log("Wysłano analizę emocjonalną (" + attachments.length + " PNG) -> " + recipient);
+    console.log("Wysłano analizę emocjonalną (" +
+      images.length + " PNG, " + docs.length + " TXT) -> " + recipient);
   } catch (e) {
-    console.warn("reply() nie działa, wysyłam nowy mail: " + e.message);
+    console.warn("reply() nie działa: " + e.message);
     MailApp.sendEmail({
       to:          recipient,
       subject:     "RE: " + subject,

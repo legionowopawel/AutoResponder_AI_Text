@@ -332,7 +332,7 @@ def _word_freq(text: str) -> list:
 # ── Helpers wykresów ──────────────────────────────────────────────────────────
 def _fig_to_b64(fig) -> str:
     buf = io.BytesIO()
-    fig.savefig(buf, format="PNG", dpi=80, bbox_inches="tight")
+    fig.savefig(buf, format="PNG", dpi=60, bbox_inches="tight")
     buf.seek(0)
     result = base64.b64encode(buf.read()).decode("ascii")
     buf.close()
@@ -366,7 +366,7 @@ def _plot_w1_radar(totals: dict, title: str) -> str:
     vals_c = vals + [vals[0]]
     angles_c = angles + [angles[0]]
 
-    fig = plt.figure(figsize=(10, 10))
+    fig = plt.figure(figsize=(7, 7))
     ax  = plt.subplot(111, polar=True)
     ax.plot(angles_c, vals_c, linewidth=2, color="steelblue")
     ax.fill(angles_c, vals_c, alpha=0.25, color="steelblue")
@@ -390,7 +390,7 @@ def _plot_w3_kategorie(totals: dict, title: str) -> str:
     n      = len(labels)
     colors = _cat_colors(n)
 
-    fig, ax = plt.subplots(figsize=(14, 6))
+    fig, ax = plt.subplots(figsize=(10, 4))
     bars = ax.bar(range(n), vals, color=colors)
     ax.set_xticks(range(n))
     ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
@@ -421,7 +421,7 @@ def _plot_wK_kolo(perc: dict, title: str) -> str:
     n      = len(labels)
     colors = _cat_colors(n)
 
-    fig, ax = plt.subplots(figsize=(10, 10))
+    fig, ax = plt.subplots(figsize=(7, 7))
     wedges, _, autotexts = ax.pie(
         vals, labels=None, colors=colors,
         autopct=lambda p: f"{p:.1f}%" if p > 2.5 else "",
@@ -499,7 +499,7 @@ def _plot_we_przyklady(totals: dict, hits: dict, title: str) -> str:
     n      = len(labels)
     colors = _cat_colors(n)
 
-    fig, ax = plt.subplots(figsize=(14, 7))
+    fig, ax = plt.subplots(figsize=(10, 5))
     bars = ax.barh(range(n), vals, color=colors, height=0.6)
     ax.set_yticks(range(n))
     ax.set_yticklabels(labels, fontsize=10)
@@ -530,14 +530,13 @@ def _plot_wa_akapity(para_rows: list, title: str) -> str:
     if not para_rows:
         return None
 
-    # Ogranicz do max 100 akapitów żeby nie tworzyć gigantycznych wykresów
-    rows = para_rows[:100]
+    rows = para_rows[:50]
 
     x   = [r["idx"] for r in rows]
     pos = [r["pos"] for r in rows]
     neg = [r["neg"] for r in rows]
 
-    fig, ax = plt.subplots(figsize=(min(max(10, len(x) * 0.4 + 2), 30), 5))
+    fig, ax = plt.subplots(figsize=(min(max(8, len(x) * 0.3 + 2), 20), 4))
     width = 0.4
     width = 0.4
     bars_p = ax.bar(
