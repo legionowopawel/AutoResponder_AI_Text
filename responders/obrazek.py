@@ -24,10 +24,12 @@ from flask import current_app
 from core.ai_client import call_groq as call_deepseek, MODEL_TYLER
 
 # ── Stałe ─────────────────────────────────────────────────────────────────────
-HF_API_URL = (
-    "https://router.huggingface.co/hf-inference/models/"
-    "stabilityai/stable-diffusion-3-medium"
-)
+HF_API_URLS = [
+    # Preferowany — Stable Diffusion 3 (lepsza obsługa polskiego tekstu)
+    "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-3-medium",
+    # Fallback — FLUX.1-schnell (jeśli SD3 nie działa)
+    "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
+]
 HF_STEPS    = 50
 HF_GUIDANCE = 7.5
 TIMEOUT_SEC = 60
@@ -121,11 +123,13 @@ def _get_hf_tokens() -> list:
     return tokens
 
 
-# ── KROK 3: Prompt → HF FLUX → PNG ───────────────────────────────────────────
+# ── KROK 3: Prompt → HF SD3/FLUX → PNG ──────────────────────────────────────
 def _generate_image_hf(full_prompt: str) -> bytes:
     """
-    Wysyła pełny prompt do HF FLUX.1-schnell.
-    Próbuje tokenów po kolei. Zwraca bytes PNG lub b'' przy błędzie.
+    Wysyła pełny prompt do HF.
+    Próbuje najpierw SD3 (lepsza obsługa polskiego tekstu).
+    Jeśli SD3 zawiedzie, fallback na FLUX.1-schnell.
+    Tokeny próbuje po kolei. Zwraca bytes PNG lub b'' przy błędzie.
     """
     tokens = _get_hf_tokens()
     if not tokens:
@@ -143,52 +147,65 @@ def _generate_image_hf(full_prompt: str) -> bytes:
     }
 
     current_app.logger.info(
-        "HF FLUX — tokeny: %s | prompt: %.150s",
+        "HF generowanie — tokeny: %s | prompt: %.150s",
         [n for n, _ in tokens], full_prompt,
     )
 
-    for name, token in tokens:
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Accept":        "image/png",
-        }
-        current_app.logger.info("HF FLUX — próbuję token: %s", name)
-        try:
-            resp = requests.post(
-                HF_API_URL, headers=headers, json=payload, timeout=TIMEOUT_SEC
-            )
-            if resp.status_code == 200:
-                current_app.logger.info(
-                    "HF FLUX sukces — token=%s | PNG %d B", name, len(resp.content)
+    # Próbuj każdy model
+    for model_url in HF_API_URLS:
+        model_name = model_url.split("/")[-1]
+        current_app.logger.info("Próbuję model: %s", model_name)
+        
+        for name, token in tokens:
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Accept":        "image/png",
+            }
+            current_app.logger.info("Model=%s, token=%s", model_name, name)
+            try:
+                resp = requests.post(
+                    model_url, headers=headers, json=payload, timeout=TIMEOUT_SEC
                 )
-                return resp.content
-            elif resp.status_code in (401, 403):
+                if resp.status_code == 200:
+                    current_app.logger.info(
+                        "✓ Sukces! Model=%s | token=%s | PNG %d B", 
+                        model_name, name, len(resp.content)
+                    )
+                    return resp.content
+                elif resp.status_code in (401, 403):
+                    current_app.logger.warning(
+                        "Model=%s token %s nieważny (%s) — próbuję następny token",
+                        model_name, name, resp.status_code
+                    )
+                elif resp.status_code in (503, 529):
+                    current_app.logger.warning(
+                        "Model=%s token %s przeciążony (%s) — próbuję następny token",
+                        model_name, name, resp.status_code
+                    )
+                else:
+                    current_app.logger.error(
+                        "Model=%s token %s błąd %s: %.200s — próbuję następny token",
+                        model_name, name, resp.status_code, resp.text
+                    )
+            except requests.exceptions.Timeout:
                 current_app.logger.warning(
-                    "HF FLUX token %s nieważny (%s) — próbuję następny",
-                    name, resp.status_code
+                    "Model=%s token %s timeout po %d sek — próbuję następny token",
+                    model_name, name, TIMEOUT_SEC
                 )
-            elif resp.status_code in (503, 529):
-                current_app.logger.warning(
-                    "HF FLUX token %s przeciążony (%s) — próbuję następny",
-                    name, resp.status_code
-                )
-            else:
+            except Exception as e:
                 current_app.logger.error(
-                    "HF FLUX token %s błąd %s: %.200s — próbuję następny",
-                    name, resp.status_code, resp.text
+                    "Model=%s token %s nieoczekiwany błąd: %s — próbuję następny token",
+                    model_name, name, e
                 )
-        except requests.exceptions.Timeout:
-            current_app.logger.warning(
-                "HF FLUX token %s timeout po %d sek — próbuję następny",
-                name, TIMEOUT_SEC
-            )
-        except Exception as e:
-            current_app.logger.error(
-                "HF FLUX token %s nieoczekiwany błąd: %s — próbuję następny",
-                name, e
-            )
+        
+        current_app.logger.warning(
+            "Model %s zawiódł ze wszystkimi tokenami — próbuję następny model",
+            model_name
+        )
 
-    current_app.logger.error("HF FLUX — wszystkie tokeny (%d) zawiodły!", len(tokens))
+    current_app.logger.error(
+        "Wszystkie modele (%d) i tokeny zawiedły!", len(HF_API_URLS)
+    )
     return b""
 
 
@@ -198,7 +215,7 @@ def build_obrazek_section(body: str) -> dict:
     Buduje sekcję 'obrazek':
       Krok 1 — treść maila (X) → DeepSeek → scenariusz 4 scen (Y)
       Krok 2 — scenariusz (Y) + styl → pełny prompt HF
-      Krok 3 — HF FLUX.1-schnell → PNG
+      Krok 3 — HF SD3 (fallback: FLUX.1-schnell) → PNG
       Krok 4 — mail zwrotny z treścią Y i obrazkiem PNG
     """
     if not body or not body.strip():
