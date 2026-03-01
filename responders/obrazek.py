@@ -25,7 +25,7 @@ from core.ai_client import call_groq as call_deepseek, MODEL_TYLER
 
 # ── Stałe ─────────────────────────────────────────────────────────────────────
 HF_API_URL = (
-    "https://api-inference.huggingface.co/models/"
+    "https://router.huggingface.co/hf-inference/models/"
     "stabilityai/stable-diffusion-3-medium"
 )
 HF_STEPS    = 50
