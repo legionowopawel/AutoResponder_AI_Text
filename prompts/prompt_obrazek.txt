@@ -1,4 +1,7 @@
-1. Color: black and white only; thick, uniform linework; no shading, gradients, or perspective.
-2. Anatomy: oversized head, small torso, bulky body, long thick nose, unnaturally small hands and feet.
-3. Expression: exaggerated, absurd facial expressions that are instantly readable.
-4. Scene: background reduced to the bare minimum; rounded speech bubbles with a simple tail; text in ALL CAPS.
+4-panel comic strip, each panel shows a different moment of the same scene.
+Black and white only, thick uniform ink lines, no shading, no gradients, no color.
+Oversized heads, small torso, bulky body, long thick nose, small hands and feet.
+Exaggerated readable facial expressions. Minimal background.
+Rounded speech bubbles with ALL CAPS text only if dialogue is needed.
+No written descriptions, no labels, no titles, no captions outside bubbles.
+Cinematic storytelling across 4 panels, left to right.

@@ -1,6 +1,6 @@
 """
 responders/obrazek.py
-Responder OBRAZEK — generuje obrazek AI z treści maila.
+Responder OBRAZEK — generuje 4-ujęciowy komiks AI z treści maila.
 
 Używa Hugging Face Inference API z modelem FLUX.1-schnell.
 Tokeny HF ustawiasz w Render jako zmienne środowiskowe:
@@ -8,14 +8,9 @@ Tokeny HF ustawiasz w Render jako zmienne środowiskowe:
 Program próbuje tokenów po kolei — jeśli jeden nie działa, bierze następny.
 Styl obrazka pochodzi z pliku: prompts/prompt_obrazek.txt
 
-Parametry generowania (identyczne jak w wersji lokalnej):
+Parametry generowania:
   - num_inference_steps: 30
   - guidance_scale:      3.5
-
-Dodanie do app.py (już gotowe):
-    from responders.obrazek import build_obrazek_section
-    if data.get("wants_obrazek"):
-        response_data["obrazek"] = build_obrazek_section(body)
 """
 
 import os
@@ -24,29 +19,24 @@ import base64
 import requests
 from flask import current_app
 
-from core.ai_client import call_groq, MODEL_TYLER
+from core.ai_client import call_groq as call_deepseek, MODEL_TYLER
 
 # ── Stałe ─────────────────────────────────────────────────────────────────────
 HF_API_URL = (
     "https://router.huggingface.co/hf-inference/models/"
     "black-forest-labs/FLUX.1-schnell"
 )
-HF_STEPS    = 30     # num_inference_steps  (z programu lokalnego)
-HF_GUIDANCE = 3.5    # guidance_scale       (z programu lokalnego)
-TIMEOUT_SEC = 60     # HF bywa wolne — 60 sek
-MAX_PROMPT  = 400    # limit znaków promptu tematycznego
+HF_STEPS    = 30
+HF_GUIDANCE = 3.5
+TIMEOUT_SEC = 60
+MAX_PROMPT  = 500
 
-# Ścieżka do pliku stylu
 BASE_DIR          = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROMPT_STYLE_FILE = os.path.join(BASE_DIR, "prompts", "prompt_obrazek.txt")
 
 
 # ── Wczytaj styl z pliku ──────────────────────────────────────────────────────
 def _load_style() -> str:
-    """
-    Wczytuje styl (suffix promptu) z pliku prompts/prompt_obrazek.txt.
-    Fallback = domyślny styl komiksowy z programu 3_dziala_huggins_tokeny.py.
-    """
     try:
         with open(PROMPT_STYLE_FILE, encoding="utf-8") as f:
             style = f.read().strip()
@@ -55,53 +45,52 @@ def _load_style() -> str:
     except Exception as e:
         current_app.logger.warning("Nie można wczytać prompt_obrazek.txt: %s", e)
 
+    # Fallback
     return (
-        "black and white comic style, thick bold ink lines, high contrast, "
-        "simplified shapes, no text, no speech bubbles, hand-drawn look"
+        "4-panel comic strip, black and white, thick ink lines, "
+        "oversized heads, exaggerated expressions, minimal background, "
+        "no text outside speech bubbles, cinematic storytelling left to right."
     )
 
 
 # ── Skróć treść maila do promptu obrazkowego ─────────────────────────────────
 def _build_image_prompt(body: str, style: str) -> str:
     """
-    Używa Groq żeby zamienić treść maila na krótki prompt wizualny po angielsku.
-    Fallback: pierwsze zdanie maila.
-    Styl z pliku dołączany jako suffix — tak jak w programie lokalnym.
+    Używa Groq żeby wyciągnąć z maila TYLKO wizualny opis sceny po angielsku.
+    Kluczowe: żadnego polskiego tekstu, żadnych instrukcji — tylko opis obrazu.
     """
+    groq_instruction = (
+        "Read the email below and extract the main visual scene it describes. "
+        "Write a SHORT English image prompt (max 25 words) describing ONLY "
+        "what should be VISIBLE in the picture: characters, setting, action, mood. "
+        "Do NOT include any Polish words, instructions, questions, or explanations. "
+        "Output only the visual scene description, nothing else.\n\n"
+        "Email:\n" + body[:600]
+    )
+
     try:
-        res = call_groq(
-            "Zamień poniższy tekst na krótki prompt obrazkowy po angielsku "
-            "(max 20 słów, konkretny, wizualny, bez cudzysłowów, bez wyjaśnień):\n\n"
-            + body[:500],
-            "",
-            MODEL_TYLER,
-        )
+        res = call_deepseek(groq_instruction, "", MODEL_TYLER)
         if res and res.strip():
+            # Usuń cudzysłowy, polskie znaki mogące się wkraść, nowe linie
             prompt = re.sub(r'["\'\n]', ' ', res.strip())
             prompt = prompt[:MAX_PROMPT]
+            current_app.logger.info("Groq scene prompt: %s", prompt)
         else:
             raise ValueError("Pusta odpowiedź Groq")
     except Exception as e:
         current_app.logger.warning("Groq prompt generation failed: %s", e)
-        first  = re.split(r'[.!?\n]', body.strip())[0].strip()
-        prompt = first[:MAX_PROMPT] if first else "abstract colorful art"
+        # Fallback: pierwsze zdanie maila przetłumaczone na angielski przez drugi call
+        first = re.split(r'[.!?\n]', body.strip())[0].strip()
+        prompt = first[:150] if first else "two elderly people sitting by fireplace drinking tea"
 
-    # Suffix stylu — identycznie jak w programie lokalnym
-    if style.strip():
-        full_prompt = f"{prompt}\nStyle: {style.strip()}"
-    else:
-        full_prompt = prompt
+    # Złącz opis sceny ze stylem komiksowym
+    full_prompt = f"{prompt}. {style.strip()}"
 
     return full_prompt
 
 
 # ── Zbierz dostępne tokeny z Render ──────────────────────────────────────────
 def _get_hf_tokens() -> list:
-    """
-    Czyta tokeny HF ze zmiennych środowiskowych Render w kolejności:
-    HF_TOKEN, HF_TOKEN1, HF_TOKEN2, HF_TOKEN3, HF_TOKEN4
-    Pomija puste/nieustawione.
-    """
     names  = ["HF_TOKEN", "HF_TOKEN1", "HF_TOKEN2", "HF_TOKEN3", "HF_TOKEN4"]
     tokens = []
     for name in names:
@@ -114,20 +103,12 @@ def _get_hf_tokens() -> list:
 # ── Wywołaj HF API i pobierz PNG ─────────────────────────────────────────────
 def _generate_image_hf(full_prompt: str) -> bytes:
     """
-    Wysyła prompt do Hugging Face FLUX.1-schnell.
-    Próbuje tokenów po kolei: HF_TOKEN → HF_TOKEN1 → ... → HF_TOKEN4.
-    Przechodzi do następnego tokenu gdy:
-      - 401 / 403  → token nieważny lub wyczerpany
-      - 503 / 529  → serwis przeciążony
-      - timeout    → za wolno
-      - inny błąd  → nieoczekiwany problem
-    Zwraca bytes PNG lub b'' gdy wszystkie tokeny zawiodły.
+    Wysyła prompt do HF FLUX.1-schnell.
+    Próbuje tokenów po kolei, przechodzi dalej przy każdym błędzie.
     """
     tokens = _get_hf_tokens()
     if not tokens:
-        current_app.logger.error(
-            "Brak jakiegokolwiek HF_TOKEN w zmiennych środowiskowych Render!"
-        )
+        current_app.logger.error("Brak HF_TOKEN w zmiennych środowiskowych!")
         return b""
 
     payload = {
@@ -139,9 +120,8 @@ def _generate_image_hf(full_prompt: str) -> bytes:
     }
 
     current_app.logger.info(
-        "HF FLUX — dostępne tokeny: %s | prompt: %.120s",
-        [name for name, _ in tokens],
-        full_prompt,
+        "HF FLUX — tokeny: %s | prompt: %.150s",
+        [n for n, _ in tokens], full_prompt,
     )
 
     for name, token in tokens:
@@ -152,10 +132,7 @@ def _generate_image_hf(full_prompt: str) -> bytes:
         current_app.logger.info("HF FLUX — próbuję token: %s", name)
         try:
             resp = requests.post(
-                HF_API_URL,
-                headers=headers,
-                json=payload,
-                timeout=TIMEOUT_SEC,
+                HF_API_URL, headers=headers, json=payload, timeout=TIMEOUT_SEC
             )
 
             if resp.status_code == 200:
@@ -169,38 +146,29 @@ def _generate_image_hf(full_prompt: str) -> bytes:
                     "HF FLUX token %s nieważny (%s) — próbuję następny",
                     name, resp.status_code
                 )
-                continue
-
             elif resp.status_code in (503, 529):
                 current_app.logger.warning(
-                    "HF FLUX token %s — serwis przeciążony (%s) — próbuję następny",
+                    "HF FLUX token %s przeciążony (%s) — próbuję następny",
                     name, resp.status_code
                 )
-                continue
-
             else:
                 current_app.logger.error(
-                    "HF FLUX token %s — błąd %s: %s — próbuję następny",
+                    "HF FLUX token %s błąd %s: %s — próbuję następny",
                     name, resp.status_code, resp.text[:200]
                 )
-                continue
 
         except requests.exceptions.Timeout:
             current_app.logger.warning(
-                "HF FLUX token %s — timeout po %d sek — próbuję następny",
+                "HF FLUX token %s timeout po %d sek — próbuję następny",
                 name, TIMEOUT_SEC
             )
-            continue
         except Exception as e:
             current_app.logger.error(
-                "HF FLUX token %s — nieoczekiwany błąd: %s — próbuję następny",
+                "HF FLUX token %s nieoczekiwany błąd: %s — próbuję następny",
                 name, e
             )
-            continue
 
-    current_app.logger.error(
-        "HF FLUX — wszystkie tokeny (%d) zawiodły!", len(tokens)
-    )
+    current_app.logger.error("HF FLUX — wszystkie tokeny (%d) zawiodły!", len(tokens))
     return b""
 
 
@@ -208,21 +176,10 @@ def _generate_image_hf(full_prompt: str) -> bytes:
 def build_obrazek_section(body: str) -> dict:
     """
     Buduje sekcję 'obrazek':
-      1. Wczytuje styl z prompts/prompt_obrazek.txt
-      2. Tłumaczy treść maila na prompt wizualny (Groq)
-      3. Generuje obrazek PNG przez HF FLUX.1-schnell
-      4. Zwraca base64 PNG + HTML z wiadomością dla nadawcy
-
-    Zwracany dict:
-    {
-        "reply_html":  str,
-        "image": {
-            "base64":       str | None,
-            "content_type": "image/png",
-            "filename":     "obrazek_ai.png",
-        },
-        "prompt_used": str,
-    }
+      1. Wczytuje styl komiksowy z prompts/prompt_obrazek.txt
+      2. Groq wyciąga z maila wizualny opis sceny po angielsku
+      3. Generuje 4-ujęciowy komiks PNG przez HF FLUX.1-schnell
+      4. Zwraca base64 PNG + HTML dla nadawcy
     """
     if not body or not body.strip():
         return {
@@ -230,38 +187,33 @@ def build_obrazek_section(body: str) -> dict:
             "image": {
                 "base64":       None,
                 "content_type": "image/png",
-                "filename":     "obrazek_ai.png",
+                "filename":     "komiks_ai.png",
             },
             "prompt_used": "",
         }
 
-    # 1. Wczytaj styl
-    style = _load_style()
-
-    # 2. Zbuduj prompt
+    style       = _load_style()
     full_prompt = _build_image_prompt(body, style)
-    current_app.logger.info("Pełny prompt obrazka: %.200s", full_prompt)
+    current_app.logger.info("Pełny prompt: %.250s", full_prompt)
 
-    # 3. Generuj obrazek przez HF
     png_bytes = _generate_image_hf(full_prompt)
     png_b64   = base64.b64encode(png_bytes).decode("ascii") if png_bytes else None
 
-    # 4. Treść HTML odpowiedzi
     if png_b64:
         reply_html = (
-            "<p>Na podstawie Twojej treści wygenerowałem następujący obrazek, "
-            "który załączam.</p>"
+            "<p>Na podstawie Twojej treści utworzyłem prompt i wygenerowałem obrazek:</p>"
+            f"<p><em>{full_prompt}</em></p>"
         )
     else:
         reply_html = (
-            "<p>Na podstawie Twojej treści próbowałem wygenerować obrazek, "
-            "jednak wystąpił błąd po stronie serwisu AI. "
+            "<p>Na podstawie Twojej treści utworzyłem prompt:</p>"
+            f"<p><em>{full_prompt}</em></p>"
+            "<p>Jednak wystąpił błąd po stronie serwisu AI podczas generowania obrazka. "
             "Spróbuj ponownie za chwilę.</p>"
         )
 
     current_app.logger.info(
-        "Obrazek AI: sukces=%s | rozmiar=%d B",
-        bool(png_b64), len(png_bytes)
+        "Obrazek AI: sukces=%s | rozmiar=%d B", bool(png_b64), len(png_bytes)
     )
 
     return {
@@ -269,7 +221,7 @@ def build_obrazek_section(body: str) -> dict:
         "image": {
             "base64":       png_b64,
             "content_type": "image/png",
-            "filename":     "obrazek_ai.png",
+            "filename":     "komiks_ai.png",
         },
         "prompt_used": full_prompt,
     }
