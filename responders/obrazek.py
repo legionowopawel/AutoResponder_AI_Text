@@ -3,7 +3,9 @@ responders/obrazek.py
 Responder OBRAZEK — generuje obrazek AI z treści maila.
 
 Używa Hugging Face Inference API z modelem FLUX.1-schnell.
-Token HF ustawiasz w Render jako zmienną środowiskową: HF_TOKEN
+Tokeny HF ustawiasz w Render jako zmienne środowiskowe:
+  HF_TOKEN, HF_TOKEN1, HF_TOKEN2, HF_TOKEN3, HF_TOKEN4
+Program próbuje tokenów po kolei — jeśli jeden nie działa, bierze następny.
 Styl obrazka pochodzi z pliku: prompts/prompt_obrazek.txt
 
 Parametry generowania (identyczne jak w wersji lokalnej):
@@ -93,21 +95,41 @@ def _build_image_prompt(body: str, style: str) -> str:
     return full_prompt
 
 
+# ── Zbierz dostępne tokeny z Render ──────────────────────────────────────────
+def _get_hf_tokens() -> list:
+    """
+    Czyta tokeny HF ze zmiennych środowiskowych Render w kolejności:
+    HF_TOKEN, HF_TOKEN1, HF_TOKEN2, HF_TOKEN3, HF_TOKEN4
+    Pomija puste/nieustawione.
+    """
+    names  = ["HF_TOKEN", "HF_TOKEN1", "HF_TOKEN2", "HF_TOKEN3", "HF_TOKEN4"]
+    tokens = []
+    for name in names:
+        val = os.getenv(name, "").strip()
+        if val:
+            tokens.append((name, val))
+    return tokens
+
+
 # ── Wywołaj HF API i pobierz PNG ─────────────────────────────────────────────
 def _generate_image_hf(full_prompt: str) -> bytes:
     """
     Wysyła prompt do Hugging Face FLUX.1-schnell.
-    Zwraca bytes PNG lub b'' przy błędzie.
+    Próbuje tokenów po kolei: HF_TOKEN → HF_TOKEN1 → ... → HF_TOKEN4.
+    Przechodzi do następnego tokenu gdy:
+      - 401 / 403  → token nieważny lub wyczerpany
+      - 503 / 529  → serwis przeciążony
+      - timeout    → za wolno
+      - inny błąd  → nieoczekiwany problem
+    Zwraca bytes PNG lub b'' gdy wszystkie tokeny zawiodły.
     """
-    hf_token = os.getenv("HF_TOKEN", "")
-    if not hf_token:
-        current_app.logger.error("Brak HF_TOKEN w zmiennych środowiskowych Render!")
+    tokens = _get_hf_tokens()
+    if not tokens:
+        current_app.logger.error(
+            "Brak jakiegokolwiek HF_TOKEN w zmiennych środowiskowych Render!"
+        )
         return b""
 
-    headers = {
-        "Authorization": f"Bearer {hf_token}",
-        "Accept":        "image/png",
-    }
     payload = {
         "inputs": full_prompt,
         "parameters": {
@@ -116,29 +138,69 @@ def _generate_image_hf(full_prompt: str) -> bytes:
         },
     }
 
-    current_app.logger.info("HF FLUX prompt: %.120s", full_prompt)
+    current_app.logger.info(
+        "HF FLUX — dostępne tokeny: %s | prompt: %.120s",
+        [name for name, _ in tokens],
+        full_prompt,
+    )
 
-    try:
-        resp = requests.post(
-            HF_API_URL,
-            headers=headers,
-            json=payload,
-            timeout=TIMEOUT_SEC,
-        )
-        if resp.status_code == 200:
-            current_app.logger.info(
-                "HF FLUX sukces — PNG %d B", len(resp.content)
+    for name, token in tokens:
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept":        "image/png",
+        }
+        current_app.logger.info("HF FLUX — próbuję token: %s", name)
+        try:
+            resp = requests.post(
+                HF_API_URL,
+                headers=headers,
+                json=payload,
+                timeout=TIMEOUT_SEC,
             )
-            return resp.content
-        else:
+
+            if resp.status_code == 200:
+                current_app.logger.info(
+                    "HF FLUX sukces — token=%s | PNG %d B", name, len(resp.content)
+                )
+                return resp.content
+
+            elif resp.status_code in (401, 403):
+                current_app.logger.warning(
+                    "HF FLUX token %s nieważny (%s) — próbuję następny",
+                    name, resp.status_code
+                )
+                continue
+
+            elif resp.status_code in (503, 529):
+                current_app.logger.warning(
+                    "HF FLUX token %s — serwis przeciążony (%s) — próbuję następny",
+                    name, resp.status_code
+                )
+                continue
+
+            else:
+                current_app.logger.error(
+                    "HF FLUX token %s — błąd %s: %s — próbuję następny",
+                    name, resp.status_code, resp.text[:200]
+                )
+                continue
+
+        except requests.exceptions.Timeout:
+            current_app.logger.warning(
+                "HF FLUX token %s — timeout po %d sek — próbuję następny",
+                name, TIMEOUT_SEC
+            )
+            continue
+        except Exception as e:
             current_app.logger.error(
-                "HF FLUX błąd %s: %s", resp.status_code, resp.text[:300]
+                "HF FLUX token %s — nieoczekiwany błąd: %s — próbuję następny",
+                name, e
             )
-    except requests.exceptions.Timeout:
-        current_app.logger.error("HF FLUX: timeout po %d sek", TIMEOUT_SEC)
-    except Exception as e:
-        current_app.logger.error("HF FLUX: nieoczekiwany błąd: %s", e)
+            continue
 
+    current_app.logger.error(
+        "HF FLUX — wszystkie tokeny (%d) zawiodły!", len(tokens)
+    )
     return b""
 
 
