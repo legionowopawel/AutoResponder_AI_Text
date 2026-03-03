@@ -26,7 +26,7 @@ from core.ai_client import call_groq as call_deepseek, MODEL_TYLER
 # ── Stałe ─────────────────────────────────────────────────────────────────────
 # Krótki timeout i tylko 1 próba — nawiązanie nie może blokować webhooka
 NAWIAZANIE_TIMEOUT    = 25   # sekund na odpowiedź DeepSeek
-NAWIAZANIE_MAX_RETRY  = 2    # tylko jedna próba — nie czekamy na retry
+NAWIAZANIE_MAX_RETRY  = 1    # tylko jedna próba — nie czekamy na retry
 
 # ── Ścieżki ───────────────────────────────────────────────────────────────────
 BASE_DIR    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
