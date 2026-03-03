@@ -1,14 +1,6 @@
-COMIC STRIP STRUCTURE: Create a 4-panel comic strip layout (2x2 grid or 1x4 horizontal). Each panel must be CLEARLY SEPARATED by black borders/lines. Panel 1 (top-left or left): High Drama scene. Panel 2 (top-right or second): Literal Misinterpretation. Panel 3 (bottom-left or third): Grotesque Visualization. Panel 4 (bottom-right or fourth): Anticlimax. Each panel shows a distinct moment in sequence.
 
-Style: Black and white only, thick uniform ink lines, no shading or color.
-Visual rules: Pure black (#000000) and pure white (#FFFFFF) only.
 
-Character design: Oversized heads, small torso, long thick nose, small hands and feet, exaggerated expressions.
-
-Text: Rounded speech bubbles with ALL CAPS dialogue only.
-
-Background: Minimalist, focus on characters and action.
-
-Proportions: All elements (props, poses, expressions) are exaggerated for comedic effect.
-
-Format: Comic book art style, newspaper satire illustration.
+1. Structure: Preserve the exact 4-panel comic strip structure required by the system (no structural changes).
+2. Color and style: Black and white only; thick uniform linework; no shading, gradients, or perspective.
+3. Text language: ALL speech bubbles and ALL visible text inside the image must be written in correct Polish (no English words).
+4. Typography: Rounded speech bubbles with simple tails; text in ALL CAPS; clear and grammatically correct Polish.orrect Polish.
