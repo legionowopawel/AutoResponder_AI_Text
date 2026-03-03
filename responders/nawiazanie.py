@@ -7,7 +7,8 @@ Przepływ:
      razem z webhookiem — jeśli była w Google Sheets
   2. Jeśli previous_body istnieje → wysyłamy do DeepSeek:
      obecna wiadomość + poprzednia + instrukcja z prompt_nawiazanie.txt
-  3. DeepSeek zwraca osobistą analizę nawiązującą do poprzedniej rozmowy
+  3. DeepSeek wywołany ASYNCHRONICZNIE z timeout 25s — jeśli nie zdąży,
+     webhook odpowiada normalnie bez sekcji nawiązania (brak blokowania)
   4. Render zwraca sekcję 'nawiazanie' → Apps Script wysyła osobny email
 
 Wymagane pola w webhooku (z Apps Script):
@@ -19,9 +20,14 @@ Wymagane pola w webhooku (z Apps Script):
 
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from flask import current_app
 
 from core.ai_client import call_groq as call_deepseek, MODEL_TYLER
+
+# ── Stałe ─────────────────────────────────────────────────────────────────────
+# Maksymalny czas oczekiwania na DeepSeek — nie blokujemy webhooka dłużej niż to
+DEEPSEEK_TIMEOUT_SEC = 25
 
 # ── Ścieżki ───────────────────────────────────────────────────────────────────
 BASE_DIR    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -60,12 +66,22 @@ def _build_instruction(
         )
     )
 
-    instruction = template.replace("[SENDER_NAME]",      sender_name or "")
-    instruction = instruction.replace("[SENDER_EMAIL]",  sender or "")
+    instruction = template.replace("[SENDER_NAME]",         sender_name or "")
+    instruction = instruction.replace("[SENDER_EMAIL]",     sender or "")
     instruction = instruction.replace("[PREVIOUS_SUBJECT]", previous_subject or "brak tematu")
     instruction = instruction.replace("[PREVIOUS_BODY]",    previous_body[:1500])
     instruction = instruction.replace("[CURRENT_BODY]",     current_body[:1500])
     return instruction
+
+
+# ── Wywołanie DeepSeek w osobnym wątku ───────────────────────────────────────
+def _call_deepseek_async(instruction: str, app) -> str | None:
+    """
+    Wywołuje DeepSeek w osobnym wątku z app context.
+    Zwraca wynik lub None przy błędzie.
+    """
+    with app.app_context():
+        return call_deepseek(instruction, "", MODEL_TYLER)
 
 
 # ── Główna funkcja responderu ─────────────────────────────────────────────────
@@ -80,14 +96,9 @@ def build_nawiazanie_section(
     Buduje sekcję 'nawiazanie'.
 
     Jeśli brak previous_body — zwraca has_history=False i pusty reply_html.
-    Jeśli jest historia — wywołuje DeepSeek i zwraca analizę.
-
-    Parametry:
-      body             — treść obecnej wiadomości
-      previous_body    — treść ostatniej wiadomości od tego nadawcy (lub None)
-      previous_subject — temat ostatniej wiadomości (lub None)
-      sender           — adres email nadawcy
-      sender_name      — imię i nazwisko z nagłówka From (np. "Jan Kowalski")
+    Jeśli jest historia — wywołuje DeepSeek asynchronicznie z timeout 25s.
+    Jeśli DeepSeek nie odpowie w czasie — zwraca has_history=False zamiast
+    blokować cały webhook przez 3 minuty.
     """
 
     # Brak historii — cicho, nic nie robimy
@@ -107,13 +118,42 @@ def build_nawiazanie_section(
         sender_name or "(brak imienia)", sender, previous_subject
     )
 
-    # Buduj instrukcję i wywołaj DeepSeek
+    # Buduj instrukcję
     instruction = _build_instruction(
         body, previous_body, previous_subject or "",
         sender, sender_name
     )
 
-    result = call_deepseek(instruction, "", MODEL_TYLER)
+    # Wywołaj DeepSeek asynchronicznie z timeout
+    from flask import current_app as flask_app
+    app = flask_app._get_current_object()
+
+    result = None
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_call_deepseek_async, instruction, app)
+            result = future.result(timeout=DEEPSEEK_TIMEOUT_SEC)
+
+    except FutureTimeoutError:
+        current_app.logger.warning(
+            "Nawiązanie: DeepSeek timeout (%ds) dla %s — pomijam sekcję",
+            DEEPSEEK_TIMEOUT_SEC, sender
+        )
+        return {
+            "has_history": False,
+            "reply_html":  "",
+            "analysis":    "",
+        }
+    except Exception as e:
+        current_app.logger.warning(
+            "Nawiązanie: błąd DeepSeek dla %s: %s — pomijam sekcję",
+            sender, str(e)[:80]
+        )
+        return {
+            "has_history": False,
+            "reply_html":  "",
+            "analysis":    "",
+        }
 
     if not result or not result.strip():
         current_app.logger.warning(
