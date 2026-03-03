@@ -6,7 +6,7 @@ Wykrywa emocję, generuje odpowiedź tekstową, dołącza emotkę PNG i PDF.
 import os
 from flask import current_app
 
-from core.ai_client  import call_groq, extract_clean_text, sanitize_model_output, MODEL_TYLER
+from core.ai_client  import call_deepseek, extract_clean_text, sanitize_model_output, MODEL_TYLER
 from core.files      import read_file_base64, load_prompt
 from core.html_builder import build_html_reply
 
@@ -35,7 +35,7 @@ def detect_emotion(body_text: str) -> str:
         f"jeśli żadna nie pasuje, odpowiedz: {FALLBACK_EMOT}.\n\n"
         f"Tekst:\n{body_text}\n\nOdpowiedź:"
     )
-    res = call_groq("Detektor emocji (zwróć tylko jedną etykietę)", prompt, MODEL_TYLER)
+    res = call_deepseek("Detektor emocji (zwróć tylko jedną etykietę)", prompt, MODEL_TYLER)
     if not res:
         return FALLBACK_EMOT
     token = res.strip().lower()
@@ -73,7 +73,7 @@ def build_zwykly_section(body: str) -> dict:
     )
     prompt_for_model = prompt_template.replace("{{USER_TEXT}}", body[:3000])
 
-    res_raw   = call_groq(prompt_for_model, "", MODEL_TYLER)
+    res_raw   = call_deepseek(prompt_for_model, "", MODEL_TYLER)
     res_clean = sanitize_model_output(res_raw) if res_raw else ""
     res_text  = extract_clean_text(res_clean)
     if not res_text:

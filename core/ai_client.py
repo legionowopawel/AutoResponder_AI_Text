@@ -1,15 +1,15 @@
 """
 core/ai_client.py
-Wywołania modelu AI (DeepSeek/Groq), sanitizacja odpowiedzi.
+Wywołania modelu AI (DeepSeek), sanitizacja odpowiedzi.
 """
 import os
 import json
 import requests
 from flask import current_app
 
-GROQ_API_KEY = os.getenv("API_KEY_DEEPSEEK")
-MODEL_BIZ    = os.getenv("MODEL_BIZ",   "deepseek-chat")
-MODEL_TYLER  = os.getenv("MODEL_TYLER", "deepseek-chat")
+DEEPSEEK_API_KEY = os.getenv("API_KEY_DEEPSEEK")
+MODEL_BIZ        = os.getenv("MODEL_BIZ",   "deepseek-chat")
+MODEL_TYLER      = os.getenv("MODEL_TYLER", "deepseek-chat")
 
 
 def sanitize_model_output(raw_text: str) -> str:
@@ -71,8 +71,8 @@ def extract_clean_text(text: str) -> str:
         return txt
 
 
-def call_groq(system_prompt: str, user_msg: str, model_name: str,
-              timeout: int = 40, max_retries: int = 3, retry_delay: float = 5.0):
+def call_deepseek(system_prompt: str, user_msg: str, model_name: str,
+                  timeout: int = 40, max_retries: int = 3, retry_delay: float = 5.0):
     """
     Wywołanie modelu przez API DeepSeek/Groq.
     Zwraca czysty tekst lub None przy błędzie.
@@ -80,13 +80,13 @@ def call_groq(system_prompt: str, user_msg: str, model_name: str,
     """
     import time
 
-    if not GROQ_API_KEY:
+    if not DEEPSEEK_API_KEY:
         current_app.logger.error("Brak API_KEY_DEEPSEEK")
         return None
 
     url     = "https://api.deepseek.com/chat/completions"
     headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
         "Content-Type":  "application/json",
     }
     payload = {

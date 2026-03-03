@@ -21,7 +21,7 @@ import os
 import re
 from flask import current_app
 
-from core.ai_client import call_groq as call_deepseek, MODEL_TYLER
+from core.ai_client import call_deepseek, MODEL_TYLER
 
 # ── Stałe ─────────────────────────────────────────────────────────────────────
 # Krótki timeout i tylko 1 próba — nawiązanie nie może blokować webhooka

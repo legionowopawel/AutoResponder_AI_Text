@@ -25,7 +25,7 @@ LOG_FILE        = os.path.join(BASE_DIR, "pc_super.log")
 # ----------------------------
 # 2. Klucze API i modele
 # ----------------------------
-GROQ_API_KEY = os.getenv("KLUCZ_GROQ", "")
+DEEPSEEK_API_KEY = os.getenv("API_KEY_DEEPSEEK", "")
 MODEL_BIZ    = os.getenv("MODEL_BIZ",   "llama-3.3-70b-versatile")
 MODEL_TYLER  = os.getenv("MODEL_TYLER", "llama-3.3-70b-versatile")
 
@@ -40,8 +40,8 @@ HTTP_TIMEOUT_SECONDS = int(os.getenv("HTTP_TIMEOUT_SECONDS", "20"))
 def is_env_configured() -> bool:
     """Sprawdza czy wymagane zmienne środowiskowe są ustawione."""
     missing = []
-    if not GROQ_API_KEY:
-        missing.append("KLUCZ_GROQ")
+    if not DEEPSEEK_API_KEY:
+        missing.append("API_KEY_DEEPSEEK")
     if missing:
         print(f"[WARN] Brakujące zmienne środowiskowe: {', '.join(missing)}")
         return False
@@ -65,7 +65,7 @@ def masked_key_preview(key: str) -> str:
 __all__ = [
     "BASE_DIR", "EMOTKI_DIR", "PDF_DIR",
     "PROMPT_FILE", "PROMPT_BIZ_FILE", "LOG_FILE",
-    "GROQ_API_KEY", "MODEL_BIZ", "MODEL_TYLER",
+    "DEEPSEEK_API_KEY", "MODEL_BIZ", "MODEL_TYLER",
     "HTTP_TIMEOUT_SECONDS",
     "is_env_configured", "masked_key_preview",
 ]
