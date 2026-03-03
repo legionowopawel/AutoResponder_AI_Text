@@ -7,8 +7,7 @@ Przepływ:
      razem z webhookiem — jeśli była w Google Sheets
   2. Jeśli previous_body istnieje → wysyłamy do DeepSeek:
      obecna wiadomość + poprzednia + instrukcja z prompt_nawiazanie.txt
-  3. DeepSeek wywołany ASYNCHRONICZNIE z timeout 25s — jeśli nie zdąży,
-     webhook odpowiada normalnie bez sekcji nawiązania (brak blokowania)
+  3. DeepSeek wywołany z timeout 20s i tylko 1 próbą — nie blokuje webhooka
   4. Render zwraca sekcję 'nawiazanie' → Apps Script wysyła osobny email
 
 Wymagane pola w webhooku (z Apps Script):
@@ -20,14 +19,14 @@ Wymagane pola w webhooku (z Apps Script):
 
 import os
 import re
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from flask import current_app
 
 from core.ai_client import call_groq as call_deepseek, MODEL_TYLER
 
 # ── Stałe ─────────────────────────────────────────────────────────────────────
-# Maksymalny czas oczekiwania na DeepSeek — nie blokujemy webhooka dłużej niż to
-DEEPSEEK_TIMEOUT_SEC = 25
+# Krótki timeout i tylko 1 próba — nawiązanie nie może blokować webhooka
+NAWIAZANIE_TIMEOUT    = 50   # sekund na odpowiedź DeepSeek
+NAWIAZANIE_MAX_RETRY  = 2    # tylko jedna próba — nie czekamy na retry
 
 # ── Ścieżki ───────────────────────────────────────────────────────────────────
 BASE_DIR    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -74,16 +73,6 @@ def _build_instruction(
     return instruction
 
 
-# ── Wywołanie DeepSeek w osobnym wątku ───────────────────────────────────────
-def _call_deepseek_async(instruction: str, app) -> str | None:
-    """
-    Wywołuje DeepSeek w osobnym wątku z app context.
-    Zwraca wynik lub None przy błędzie.
-    """
-    with app.app_context():
-        return call_deepseek(instruction, "", MODEL_TYLER)
-
-
 # ── Główna funkcja responderu ─────────────────────────────────────────────────
 def build_nawiazanie_section(
     body: str,
@@ -96,9 +85,8 @@ def build_nawiazanie_section(
     Buduje sekcję 'nawiazanie'.
 
     Jeśli brak previous_body — zwraca has_history=False i pusty reply_html.
-    Jeśli jest historia — wywołuje DeepSeek asynchronicznie z timeout 25s.
-    Jeśli DeepSeek nie odpowie w czasie — zwraca has_history=False zamiast
-    blokować cały webhook przez 3 minuty.
+    Jeśli jest historia — wywołuje DeepSeek z timeout 20s i 1 próbą.
+    Jeśli DeepSeek nie odpowie — zwraca has_history=False bez blokowania.
     """
 
     # Brak historii — cicho, nic nie robimy
@@ -124,29 +112,17 @@ def build_nawiazanie_section(
         sender, sender_name
     )
 
-    # Wywołaj DeepSeek asynchronicznie z timeout
-    from flask import current_app as flask_app
-    app = flask_app._get_current_object()
-
-    result = None
+    # Wywołaj DeepSeek z krótkim timeout i tylko 1 próbą
     try:
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_call_deepseek_async, instruction, app)
-            result = future.result(timeout=DEEPSEEK_TIMEOUT_SEC)
-
-    except FutureTimeoutError:
-        current_app.logger.warning(
-            "Nawiązanie: DeepSeek timeout (%ds) dla %s — pomijam sekcję",
-            DEEPSEEK_TIMEOUT_SEC, sender
+        result = call_deepseek(
+            instruction, "",
+            MODEL_TYLER,
+            timeout=NAWIAZANIE_TIMEOUT,
+            max_retries=NAWIAZANIE_MAX_RETRY,
         )
-        return {
-            "has_history": False,
-            "reply_html":  "",
-            "analysis":    "",
-        }
     except Exception as e:
         current_app.logger.warning(
-            "Nawiązanie: błąd DeepSeek dla %s: %s — pomijam sekcję",
+            "Nawiązanie: błąd DeepSeek dla %s: %s — pomijam",
             sender, str(e)[:80]
         )
         return {
@@ -157,11 +133,12 @@ def build_nawiazanie_section(
 
     if not result or not result.strip():
         current_app.logger.warning(
-            "Nawiązanie: DeepSeek nie zwrócił analizy dla %s", sender
+            "Nawiązanie: DeepSeek nie zwrócił analizy dla %s — pomijam",
+            sender
         )
         return {
-            "has_history": True,
-            "reply_html":  "<p>Nie udało się wygenerować analizy nawiązania.</p>",
+            "has_history": False,
+            "reply_html":  "",
             "analysis":    "",
         }
 

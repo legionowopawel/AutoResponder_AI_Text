@@ -8,8 +8,12 @@ Details:
 3. The humor must come from the contrast: the speeches versus Paul's dispassionate pragmatism.
 4. Emphasize exaggerated facial expressions, absurd props, and situational irony.
 5. Don't summarize the email. Transform it into visual satire.
-6. Publish ONLY 4 scenes in English.
+6. Publish exactly 4 scenes in English, but ALL dialogue and text for speech bubbles MUST be written in POLISH and enclosed in double quotes.
+Output format: For each of the 4 panels, provide:
 
+Visual Description: [Detailed description in English for FLUX model]
+
+Speech Bubble Text: [Exact text to be rendered, written in POLISH, ALL CAPS, and enclosed in double quotes]"
 
 EMAIL CONTENT:
 [PASTE EMAIL HERE]
