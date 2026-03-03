@@ -87,6 +87,6 @@ def webhook():
 
 
 if __name__ == "__main__":
-    if not os.getenv("KLUCZ_GROQ"):
-        app.logger.warning("KLUCZ_GROQ nie ustawiony — wywołania AI zwrócą None.")
+    if not os.getenv("API_KEY_DEEPSEEK"):
+        app.logger.warning("API_KEY_DEEPSEEK nie ustawiony — wywołania AI zwrócą None.")
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "10000")))

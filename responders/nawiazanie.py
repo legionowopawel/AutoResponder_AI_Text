@@ -20,7 +20,7 @@ import os
 import re
 from flask import current_app
 
-from core.ai_client import call_groq as call_deepseek, MODEL_TYLER
+from core.ai_client import call_deepseek, MODEL_TYLER
 
 # ── Ścieżki ───────────────────────────────────────────────────────────────────
 BASE_DIR      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

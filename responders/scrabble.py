@@ -9,7 +9,7 @@ import base64
 import csv
 from flask import current_app
 
-from core.ai_client    import call_groq, extract_clean_text, sanitize_model_output, MODEL_TYLER
+from core.ai_client    import call_deepseek, extract_clean_text, sanitize_model_output, MODEL_TYLER
 from core.files        import load_prompt
 from core.html_builder import build_html_reply
 
@@ -204,7 +204,7 @@ def build_scrabble_section(body: str) -> dict:
     )
     prompt_for_model = prompt_template.replace("{{USER_TEXT}}", body[:3000])
 
-    res_raw   = call_groq(prompt_for_model, "", MODEL_TYLER)
+    res_raw   = call_deepseek(prompt_for_model, "", MODEL_TYLER)
     res_clean = sanitize_model_output(res_raw) if res_raw else ""
     res_text  = extract_clean_text(res_clean)
     if not res_text:

@@ -23,7 +23,7 @@ import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import current_app
 
-from core.ai_client import call_groq as call_deepseek, MODEL_TYLER
+from core.ai_client import call_deepseek, MODEL_TYLER
 
 # ── Stałe ─────────────────────────────────────────────────────────────────────
 HF_API_URLS = [
@@ -87,7 +87,7 @@ def _build_hf_prompt(scene_text: str, style_file: str, fallback_style: str) -> s
 # ── Zbierz tokeny HF ──────────────────────────────────────────────────────────
 def _get_hf_tokens() -> list:
     names  = ["HF_TOKEN", "HF_TOKEN1", "HF_TOKEN2", "HF_TOKEN3",
-              "HF_TOKEN4", "HF_TOKEN5", "HF_TOKEN6", "HF_TOKEN7"]
+              "HF_TOKEN4", "HF_TOKEN5", "HF_TOKEN6", "HF_TOKEN7", "HF_TOKEN8", "HF_TOKEN9", "HF_TOKEN10", "HF_TOKEN11", "HF_TOKEN12", "HF_TOKEN13", "HF_TOKEN14", "HF_TOKEN15", "HF_TOKEN16", "HF_TOKEN17", "HF_TOKEN18", "HF_TOKEN19", "HF_TOKEN20"]
     tokens = []
     for name in names:
         val = os.getenv(name, "").strip()
