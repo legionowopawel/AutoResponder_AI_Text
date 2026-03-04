@@ -81,6 +81,7 @@ def _build_scene_prompt(body: str) -> str:
 # ── KROK 2: Scenariusz (Y) + plik stylu → pełny prompt HF ───────────────────
 def _build_hf_prompt(scene_text: str, style_file: str, fallback_style: str) -> str:
     style = _load_file(style_file, fallback=fallback_style)
+    current_app.logger.info("STYL UŻYTY dla %s: %.200s", style_file, style)
     return f"{scene_text}\n\n{style}"
 
 
