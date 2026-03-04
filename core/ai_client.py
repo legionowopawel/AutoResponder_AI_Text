@@ -4,6 +4,7 @@ Wywołania modelu AI (DeepSeek), sanitizacja odpowiedzi.
 """
 import os
 import json
+import time
 import requests
 from flask import current_app
 
@@ -72,14 +73,15 @@ def extract_clean_text(text: str) -> str:
 
 
 def call_deepseek(system_prompt: str, user_msg: str, model_name: str,
-                  timeout: int = 40, max_retries: int = 3, retry_delay: float = 5.0):
+                  timeout: int = 20, max_retries: int = 1, retry_delay: float = 2.0):
     """
     Wywołanie modelu przez API DeepSeek/Groq.
     Zwraca czysty tekst lub None przy błędzie.
     Automatycznie ponawia próbę max_retries razy przy timeout/connection error.
-    """
-    import time
 
+    Uwaga: max_czas_blokowania = max_retries * timeout + (max_retries-1) * retry_delay
+    Domyślnie: 1 * 20s = 20s maksimum.
+    """
     if not DEEPSEEK_API_KEY:
         current_app.logger.error("Brak API_KEY_DEEPSEEK")
         return None
@@ -102,20 +104,26 @@ def call_deepseek(system_prompt: str, user_msg: str, model_name: str,
     for attempt in range(1, max_retries + 1):
         try:
             resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
+
             if resp.status_code == 429:
-                # Rate limit — czekaj dłużej przed retry
-                wait = retry_delay * attempt
+                # Rate limit — czekaj przed retry, ale nie na ostatniej próbie
                 current_app.logger.warning(
-                    "API rate limit (429), próba %d/%d, czekam %.0fs",
-                    attempt, max_retries, wait
+                    "API rate limit (429), próba %d/%d", attempt, max_retries
                 )
-                time.sleep(wait)
-                continue
+                if attempt < max_retries:
+                    wait = min(retry_delay * attempt, 30.0)  # cap 30s
+                    current_app.logger.warning("Czekam %.0fs przed kolejną próbą", wait)
+                    time.sleep(wait)
+                    continue
+                current_app.logger.error("API rate limit po %d próbach — rezygnuję", max_retries)
+                return None
+
             if resp.status_code != 200:
                 current_app.logger.warning(
                     "API non-200 (%s): %s", resp.status_code, resp.text[:500]
                 )
-                return None
+                return None  # błędy 4xx/5xx nie mają sensu ponawiać
+
             try:
                 data = resp.json()
             except Exception:
