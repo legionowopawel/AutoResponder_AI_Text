@@ -122,7 +122,7 @@ def build_nawiazanie_section(
 
     # Wywołaj DeepSeek (timeout i retry z ai_client.py)
     try:
-        result = call_deepseek(instruction, "", MODEL_TYLER)
+        result = call_deepseek("Jesteś asystentem analizującym historię korespondencji.", instruction, MODEL_TYLER)
     except Exception as e:
         current_app.logger.warning(
             "Nawiązanie: błąd DeepSeek dla %s: %s — pomijam",
