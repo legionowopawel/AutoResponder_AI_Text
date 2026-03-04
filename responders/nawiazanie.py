@@ -23,10 +23,6 @@ from flask import current_app
 
 from core.ai_client import call_deepseek, MODEL_TYLER
 
-# ── Stałe ─────────────────────────────────────────────────────────────────────
-# Krótki timeout i tylko 1 próba — nawiązanie nie może blokować webhooka
-NAWIAZANIE_TIMEOUT    = 10   
-NAWIAZANIE_MAX_RETRY  = 2    
 
 # ── Ścieżki ───────────────────────────────────────────────────────────────────
 BASE_DIR    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -112,14 +108,9 @@ def build_nawiazanie_section(
         sender, sender_name
     )
 
-    # Wywołaj DeepSeek z krótkim timeout i tylko 1 próbą
+    # Wywołaj DeepSeek (timeout i retry z ai_client.py)
     try:
-        result = call_deepseek(
-            instruction, "",
-            MODEL_TYLER,
-            timeout=NAWIAZANIE_TIMEOUT,
-            max_retries=NAWIAZANIE_MAX_RETRY,
-        )
+        result = call_deepseek(instruction, "", MODEL_TYLER)
     except Exception as e:
         current_app.logger.warning(
             "Nawiązanie: błąd DeepSeek dla %s: %s — pomijam",

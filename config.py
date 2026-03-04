@@ -26,8 +26,8 @@ LOG_FILE        = os.path.join(BASE_DIR, "pc_super.log")
 # 2. Klucze API i modele
 # ----------------------------
 DEEPSEEK_API_KEY = os.getenv("API_KEY_DEEPSEEK", "")
-MODEL_BIZ    = os.getenv("MODEL_BIZ",   "llama-3.3-70b-versatile")
-MODEL_TYLER  = os.getenv("MODEL_TYLER", "llama-3.3-70b-versatile")
+MODEL_BIZ   = os.getenv("MODEL_BIZ",   "deepseek-chat")
+MODEL_TYLER = os.getenv("MODEL_TYLER", "deepseek-chat")
 
 # ----------------------------
 # 3. Ustawienia HTTP

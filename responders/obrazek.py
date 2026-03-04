@@ -30,7 +30,7 @@ HF_API_URLS = [
     "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
 ]
 HF_STEPS    = 10
-HF_GUIDANCE = 3.5 # jak bardzo trzymać się promptu zakres od 1 do 20
+HF_GUIDANCE = 20 # jak bardzo trzymać się promptu zakres od 1 do 20
 TIMEOUT_SEC = 55  # nieco poniżej 60s aby nie kolidować z timeoutem Render
 
 BASE_DIR    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
