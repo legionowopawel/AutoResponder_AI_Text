@@ -48,8 +48,7 @@ function removeKeywordsFromText(text, keywords, maskMode) {
  * Zapisuje wiadomość do arkusza historii.
  * Kolumny: Data | Nadawca | Temat | Treść
  *
- * Optymalizacja: zamiast zawsze dodawać nowy wiersz (appendRow),
- * szuka istniejącego wiersza dla danego nadawcy i nadpisuje go.
+ * Optymalizacja: szuka istniejącego wiersza dla danego nadawcy i nadpisuje go.
  * Dzięki temu arkusz ma zawsze tyle wierszy ile unikalnych nadawców
  * i nigdy nie rośnie — co gwarantuje stałą prędkość odczytu.
  */
@@ -64,13 +63,12 @@ function saveToHistory(senderEmail, subject, body) {
     var sheet   = ss.getSheets()[0];
     var lastRow = sheet.getLastRow();
 
-    // ── Szukaj istniejącego wiersza tej osoby ────────────────────────────────
     var foundRow = -1;
     if (lastRow >= 2) {
       var emailCol = sheet.getRange(2, 2, lastRow - 1, 1).getValues();
       for (var i = 0; i < emailCol.length; i++) {
         if ((emailCol[i][0] || "").toString().toLowerCase().trim() === senderEmail.toLowerCase().trim()) {
-          foundRow = i + 2; // numer wiersza w arkuszu (1-based, +1 za nagłówek)
+          foundRow = i + 2;
           break;
         }
       }
@@ -84,11 +82,9 @@ function saveToHistory(senderEmail, subject, body) {
     ];
 
     if (foundRow !== -1) {
-      // ── Nadpisz istniejący wiersz ─────────────────────────────────────────
       sheet.getRange(foundRow, 1, 1, 4).setValues([rowData]);
       console.log("Historia zaktualizowana dla: " + senderEmail);
     } else {
-      // ── Nowa osoba — dodaj nowy wiersz ───────────────────────────────────
       sheet.appendRow(rowData);
       console.log("Historia dodana dla: " + senderEmail);
     }
@@ -96,13 +92,10 @@ function saveToHistory(senderEmail, subject, body) {
     console.error("Błąd zapisu historii: " + e.message);
   }
 }
+
 /**
  * Pobiera ostatnią wiadomość od danego nadawcy z arkusza historii.
  * Zwraca obiekt { subject, body } lub null jeśli brak historii.
- *
- * Optymalizacja: zamiast ładować cały arkusz do pamięci,
- * pobiera najpierw tylko kolumnę B (Nadawca), szuka emaila od końca,
- * a dopiero po znalezieniu pobiera temat i treść z tego jednego wiersza.
  */
 function findLastMessageBySender(senderEmail) {
   try {
@@ -115,16 +108,12 @@ function findLastMessageBySender(senderEmail) {
     var sheet   = ss.getSheets()[0];
     var lastRow = sheet.getLastRow();
 
-    if (lastRow < 2) return null; // arkusz pusty
+    if (lastRow < 2) return null;
 
-    // ── Krok 1: pobierz TYLKO kolumnę B (Nadawca) ────────────────────────────
     var emailCol = sheet.getRange(2, 2, lastRow - 1, 1).getValues();
 
-    // ── Krok 2: szukaj od końca ───────────────────────────────────────────────
     for (var i = emailCol.length - 1; i >= 0; i--) {
       if ((emailCol[i][0] || "").toString().toLowerCase().trim() === senderEmail.toLowerCase().trim()) {
-
-        // ── Krok 3: pobierz tylko ten jeden wiersz (temat + treść) ───────────
         var row = sheet.getRange(i + 2, 3, 1, 2).getValues()[0];
         console.log("Znaleziono historię dla: " + senderEmail);
         return {
@@ -139,6 +128,27 @@ function findLastMessageBySender(senderEmail) {
   } catch (e) {
     console.error("Błąd odczytu historii: " + e.message);
     return null;
+  }
+}
+
+/**
+ * Pobiera listę wszystkich znanych nadawców z kolumny B arkusza historii.
+ * Wywoływana RAZ przed pętlą — 1 zapytanie do Sheets zamiast 20.
+ */
+function _getKnownSenders() {
+  try {
+    var sheetId = PropertiesService.getScriptProperties().getProperty("HISTORY_SHEET_ID");
+    if (!sheetId) return [];
+    var sheet   = SpreadsheetApp.openById(sheetId).getSheets()[0];
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return [];
+    var emailCol = sheet.getRange(2, 2, lastRow - 1, 1).getValues();
+    return emailCol.map(function(r){
+      return (r[0] || "").toString().toLowerCase().trim();
+    }).filter(Boolean);
+  } catch(e) {
+    console.error("Błąd _getKnownSenders: " + e.message);
+    return [];
   }
 }
 
@@ -478,12 +488,13 @@ function executeNawiazanieMailSend(data, recipient, subject, msg) {
 }
 
 // ── Wywołanie backendu ────────────────────────────────────────────────────────
-function _callBackend(sender, subject, body, url,
+function _callBackend(sender, senderName, subject, body, url,
                       wantsScrabble, wantsAnaliza, wantsEmocje, wantsObrazek,
                       attachments, previousBody, previousSubject) {
   var secret = PropertiesService.getScriptProperties().getProperty("WEBHOOK_SECRET");
   var payload = {
     sender:           sender,
+    sender_name:      senderName    || "",
     subject:          subject,
     body:             body,
     wants_scrabble:   wantsScrabble  ? true : false,
@@ -494,6 +505,19 @@ function _callBackend(sender, subject, body, url,
     previous_body:    previousBody   || null,
     previous_subject: previousSubject || null
   };
+
+  console.log("Webhook — sender: " + payload.sender);
+  console.log("Webhook — sender_name: " + payload.sender_name);
+  console.log("Webhook — subject: " + (payload.subject || "(brak)"));
+  console.log("Webhook — body długość: " + (payload.body ? payload.body.length : 0) + " znaków");
+  console.log("Webhook — previous_body: " + (payload.previous_body ? payload.previous_body.length + " znaków" : "null"));
+  console.log("Webhook — previous_subject: " + (payload.previous_subject || "null"));
+  console.log("Webhook — flagi: scrabble=" + payload.wants_scrabble +
+    " | analiza=" + payload.wants_analiza +
+    " | emocje=" + payload.wants_emocje +
+    " | obrazek=" + payload.wants_obrazek);
+  console.log("Webhook — załączniki: " + payload.attachments.length);
+
   var options = {
     method:             "post",
     contentType:        "application/json",
@@ -505,6 +529,7 @@ function _callBackend(sender, subject, body, url,
     var resp = UrlFetchApp.fetch(url, options);
     var code = resp.getResponseCode();
     if (code === 200) {
+      console.log("Webhook — odpowiedź OK (200), rozmiar: " + resp.getContentText().length + " znaków");
       return { json: JSON.parse(resp.getContentText()) };
     } else {
       console.error("Backend zwrócił kod " + code + ": " + resp.getContentText());
@@ -536,6 +561,10 @@ function __AAA_processEmails() {
 
   var maskMode = false;
 
+  // ── Wczytaj znanych nadawców z Sheets RAZ przed pętlą (1 zapytanie) ────────
+  var knownSenders = _getKnownSenders();
+  console.log("Znani nadawcy z historii: " + knownSenders.length);
+
   var threads = GmailApp.getInboxThreads(0, 20);
   for (var i = 0; i < threads.length; i++) {
     var thread = threads[i];
@@ -545,13 +574,17 @@ function __AAA_processEmails() {
     var msg        = messages[messages.length - 1];
     var fromRaw    = msg.getFrom();
     var fromEmail  = extractEmail(fromRaw).toLowerCase();
+    var senderName = "";
+    var nameMatch  = fromRaw.match(/^"?([^"<]+)"?\s*</);
+    if (nameMatch) senderName = nameMatch[1].trim();
     var subject    = msg.getSubject();
     var plainBody  = msg.getPlainBody();
     var searchText = (plainBody + " " + subject).toLowerCase();
 
     // ── Flagi ─────────────────────────────────────────────────────────────────
-    var isBiz     = BIZ_LIST.indexOf(fromEmail) !== -1;
-    var isAllowed = ALLOWED_LIST.indexOf(fromEmail) !== -1;
+    var isBiz          = BIZ_LIST.indexOf(fromEmail) !== -1;
+    var isAllowed      = ALLOWED_LIST.indexOf(fromEmail) !== -1;
+    var isKnownSender  = knownSenders.indexOf(fromEmail) !== -1;
 
     var containsKeyword = (
       KEYWORDS.some(function(k){  return k && searchText.indexOf(k) !== -1; }) ||
@@ -583,13 +616,13 @@ function __AAA_processEmails() {
     }
 
     // ── Ignoruj jeśli nie spełnia żadnego warunku ─────────────────────────────
-    if (!isBiz && !isAllowed && !containsKeyword &&
+    if (!isBiz && !isAllowed && !isKnownSender && !containsKeyword &&
         !containsKeyword2 && !containsKeyword3 &&
         !containsKeyword4 && !containsKeywordObrazek) {
       var label = GmailApp.getUserLabelByName("processed");
       if (!label) label = GmailApp.createLabel("processed");
       thread.addLabel(label);
-      thread.markRead(); // POPRAWKA #1: oznacz jako przeczytane — nie przetwarzaj ponownie
+      thread.markRead();
       continue;
     }
 
@@ -604,12 +637,11 @@ function __AAA_processEmails() {
       .filter(Boolean);
     var sanitizedBody = removeKeywordsFromText(plainBody, combinedKeywords, maskMode);
 
-
-     // ── Pobierz historię z Google Sheets (dla nawiązania) ────────────────────
+    // ── Pobierz historię z Google Sheets (dla nawiązania) ────────────────────
     var previousData    = findLastMessageBySender(fromEmail);
     var previousBody    = previousData ? previousData.body    : null;
     var previousSubject = previousData ? previousData.subject : null;
-    
+
     // ── Pobierz załączniki ────────────────────────────────────────────────────
     var allAttachments = [];
     if (containsKeyword3 || containsKeyword4) {
@@ -620,6 +652,7 @@ function __AAA_processEmails() {
     // ── Wywołaj backend ───────────────────────────────────────────────────────
     var response = _callBackend(
       fromEmail,
+      senderName,
       subject,
       sanitizedBody,
       webhookUrl,
@@ -632,7 +665,7 @@ function __AAA_processEmails() {
       previousSubject
     );
 
-if (response && response.json) {
+    if (response && response.json) {
       var json = response.json;
 
       if (json.biznes && (isBiz || (!isAllowed && containsKeyword))) {
@@ -662,8 +695,8 @@ if (response && response.json) {
       thread.markRead();
 
     } else {
-      // ❌ Backend niedostępny — zostaw wiadomość jako nieprzeczytaną,
-      //    żeby skrypt spróbował ponownie przy następnym uruchomieniu
+      // ❌ Backend niedostępny — zostaw jako nieprzeczytane
+      // przy następnym uruchomieniu skrypt spróbuje ponownie
       console.warn("Pominięto oznaczenie jako przeczytane — backend nie odpowiedział dla: " + fromEmail);
     }
   }
@@ -682,4 +715,3 @@ function keepAlive() {
     UrlFetchApp.fetch(url.replace("/webhook", "/"), { muteHttpExceptions: true });
   } catch(e) {}
 }
-
