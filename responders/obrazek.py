@@ -29,7 +29,7 @@ from core.ai_client import call_deepseek, MODEL_TYLER
 HF_API_URLS = [
     "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
 ]
-HF_STEPS    = 10
+HF_STEPS    = 30
 HF_GUIDANCE = 20 # jak bardzo trzymać się promptu zakres od 1 do 20
 TIMEOUT_SEC = 55  # nieco poniżej 60s aby nie kolidować z timeoutem Render
 
@@ -74,8 +74,7 @@ def _build_scene_prompt(body: str) -> str:
         return scene_text
 
     current_app.logger.warning("DeepSeek nie zwrócił scenariusza — używam fallback")
-    return "Two people arguing about emotions. One dramatic, one eating a sandwich."
-
+    return None
 
 # ── KROK 2: Scenariusz (Y) + plik stylu → pełny prompt HF ───────────────────
 def _build_hf_prompt(scene_text: str, style_file: str, fallback_style: str) -> str:
@@ -222,6 +221,16 @@ def build_obrazek_section(body: str) -> dict:
 
     # Krok 1 — DeepSeek generuje scenariusz Y (wspólny dla obu obrazków)
     scene_text = _build_scene_prompt(body)
+
+    if not scene_text:
+        return {
+            "reply_html": "<p>Nie udało się wygenerować scenariusza — spróbuj ponownie.</p>",
+            "image":  {"base64": None, "content_type": "image/png", "filename": "komiks_ai.png"},
+            "image2": {"base64": None, "content_type": "image/png", "filename": "komiks_ai_retro.png"},
+            "prompt_used": "",
+        }
+
+    # Krok 2 — budujemy dwa pełne prompty
 
     # Krok 2 — budujemy dwa pełne prompty
     prompt1 = _build_hf_prompt(

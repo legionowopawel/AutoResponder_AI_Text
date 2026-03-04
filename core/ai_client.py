@@ -73,7 +73,7 @@ def extract_clean_text(text: str) -> str:
 
 
 def call_deepseek(system_prompt: str, user_msg: str, model_name: str,
-                  timeout: int = 20, max_retries: int = 1, retry_delay: float = 2.0):
+                  timeout: int = 35, max_retries: int = 1, retry_delay: float = 2.0):
     """
     Wywołanie modelu przez API DeepSeek
     Zwraca czysty tekst lub None przy błędzie.
