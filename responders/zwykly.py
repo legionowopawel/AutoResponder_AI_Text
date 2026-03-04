@@ -33,7 +33,7 @@ def detect_emotion(body_text: str) -> str:
         "Na podstawie poniższego tekstu wybierz dokładnie jedną z następujących "
         f"etykiet emocji (bez dodatkowego tekstu): {', '.join(EMOTIONS)}; "
         f"jeśli żadna nie pasuje, odpowiedz: {FALLBACK_EMOT}.\n\n"
-        f"Tekst:\n{body_text}\n\nOdpowiedź:"
+        f"Tekst:\n{body_text[:1000]}\n\nOdpowiedź:"
     )
     res = call_deepseek("Detektor emocji (zwróć tylko jedną etykietę)", prompt, MODEL_TYLER)
     if not res:

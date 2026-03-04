@@ -31,7 +31,7 @@ def detect_topic(body_text: str) -> str:
         "Przeczytaj tekst klienta i rozpoznaj, który z poniższych tematów notarialnych "
         "jest najbardziej odpowiedni. Jeśli nie możesz jednoznacznie przypisać, odpowiedz: UNKNOWN.\n\n"
         f"Tematy:\n{topics_list}\n\n"
-        f"Tekst:\n{body_text}\n\nOdpowiedź (jedna etykieta lub UNKNOWN):"
+        f"Tekst:\n{body_text[:1000]}\n\nOdpowiedź (jedna etykieta lub UNKNOWN):"
     )
     res = call_deepseek("Detektor tematu notarialnego (jedna etykieta lub UNKNOWN)", prompt, MODEL_BIZ)
     if not res:
