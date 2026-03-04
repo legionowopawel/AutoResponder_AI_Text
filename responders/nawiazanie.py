@@ -7,7 +7,7 @@ Przepływ:
      razem z webhookiem — jeśli była w Google Sheets
   2. Jeśli previous_body istnieje → wysyłamy do DeepSeek:
      obecna wiadomość + poprzednia + instrukcja z prompt_nawiazanie.txt
-  3. DeepSeek wywołany z timeout 20s i tylko 3 prób — nie blokuje webhooka
+  3. DeepSeek wywołany z domyślnym timeout z ai_client — nie blokuje webhooka
   4. Render zwraca sekcję 'nawiazanie' → Apps Script wysyła osobny email
 
 Wymagane pola w webhooku (z Apps Script):
@@ -22,7 +22,6 @@ import re
 from flask import current_app
 
 from core.ai_client import call_deepseek, MODEL_TYLER
-
 
 # ── Ścieżki ───────────────────────────────────────────────────────────────────
 BASE_DIR    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -81,7 +80,7 @@ def build_nawiazanie_section(
     Buduje sekcję 'nawiazanie'.
 
     Jeśli brak previous_body — zwraca has_history=False i pusty reply_html.
-    Jeśli jest historia — wywołuje DeepSeek z timeout 20s i 1 próbą.
+    Jeśli jest historia — wywołuje DeepSeek (domyślny timeout i retry z ai_client).
     Jeśli DeepSeek nie odpowie — zwraca has_history=False bez blokowania.
     """
 
@@ -106,6 +105,19 @@ def build_nawiazanie_section(
     instruction = _build_instruction(
         body, previous_body, previous_subject or "",
         sender, sender_name
+    )
+
+    # ── DIAGNOSTYKA — loguj rozmiar i fragment wysyłanego promptu ────────────
+    current_app.logger.info(
+        "Nawiązanie: długość instrukcji = %d znaków | "
+        "previous_body = %d znaków | current_body = %d znaków",
+        len(instruction), len(previous_body), len(body)
+    )
+    current_app.logger.info(
+        "Nawiązanie: instrukcja (pierwsze 300 znaków): %.300s", instruction
+    )
+    current_app.logger.info(
+        "Nawiązanie: MODEL = %s", MODEL_TYLER
     )
 
     # Wywołaj DeepSeek (timeout i retry z ai_client.py)
