@@ -395,7 +395,42 @@ function _convertToBW(imageBase64, contentType, webhookUrl) {
 }
 
 
-// ── Wysyłka: obrazek AI — zastępuje poprzednią wersję ────────────────────────
+// ── NOWA funkcja: wywołuje /webhook_gif z dwoma PNG, odbiera dwa GIFy ────────
+function _callWebhookGif(png1Base64, png2Base64, webhookUrl) {
+  var gifUrl = webhookUrl.replace("/webhook", "/webhook_gif");
+  var payload = {
+    png1_base64: png1Base64 || null,
+    png2_base64: png2Base64 || null
+  };
+  var options = {
+    method:             "post",
+    contentType:        "application/json",
+    payload:            JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+  try {
+    var resp = UrlFetchApp.fetch(gifUrl, options);
+    if (resp.getResponseCode() === 200) {
+      var json = JSON.parse(resp.getContentText());
+      console.log("webhook_gif OK — gif1=%s gif2=%s",
+        !!json.gif1, !!json.gif2);
+      return json;
+    } else {
+      console.error("webhook_gif błąd: " + resp.getResponseCode() +
+        " — " + resp.getContentText().substring(0, 200));
+      return null;
+    }
+  } catch(e) {
+    console.error("webhook_gif wyjątek: " + e.message);
+    return null;
+  }
+}
+
+// Wysyła 4 maile:
+//   Mail 1 — PNG czarno-biały + 2222.txt
+//   Mail 2 — PNG retro-pop    + 3333.txt
+//   Mail 3 — GIF animowany z komiksu czarno-białego
+//   Mail 4 — GIF animowany z komiksu retro-pop
 function executeObrazekMailSend(data, recipient, subject, msg) {
   if (!data) {
     console.warn("Brak danych obrazka dla " + recipient);
@@ -404,7 +439,7 @@ function executeObrazekMailSend(data, recipient, subject, msg) {
 
   var webhookUrl = PropertiesService.getScriptProperties().getProperty("WEBHOOK_URL");
 
-  // ── Mail 1: komiks czarno-biały (kolor z FLUX) + 2222.txt ──
+  // ── Mail 1: PNG czarno-biały + 2222.txt ───────────────────────────────────
   if (data.image && data.image.base64) {
     try {
       var inlineImages1 = {};
@@ -429,12 +464,10 @@ function executeObrazekMailSend(data, recipient, subject, msg) {
         '<p><img src="cid:obrazek_cid" alt="Komiks AI" style="max-width:100%;border-radius:8px;"></p>';
       try {
         msg.reply("", {
-          htmlBody:     htmlBody1,
-          inlineImages: inlineImages1,
-          attachments:  attachments1,
-          name:         "Komiks AI – Autoresponder"
+          htmlBody: htmlBody1, inlineImages: inlineImages1,
+          attachments: attachments1, name: "Komiks AI – Autoresponder"
         });
-        console.log("Wysłano obrazek 1 (kolor) + 2222.txt -> " + recipient);
+        console.log("Wysłano obrazek 1 (PNG) + 2222.txt -> " + recipient);
       } catch(e) {
         MailApp.sendEmail({
           to: recipient, subject: "RE: " + subject + " [komiks]",
@@ -443,45 +476,9 @@ function executeObrazekMailSend(data, recipient, subject, msg) {
         });
       }
     } catch(e) { console.error("Błąd obrazka 1: " + e.message); }
-
-    // ── Mail 3: obrazek 1 po konwersji BW ──
-    try {
-      var bw1Base64 = _convertToBW(
-        data.image.base64,
-        data.image.content_type || "image/png",
-        webhookUrl
-      );
-      if (bw1Base64) {
-        var inlineImagesBW1 = {};
-        var bwBlob1 = Utilities.newBlob(
-          Utilities.base64Decode(bw1Base64),
-          "image/png",
-          "komiks_ai_bw.png"
-        );
-        inlineImagesBW1["bw1_cid"] = bwBlob1;
-        var htmlBodyBW1 =
-          "<p>Komiks AI – wersja czarno-biała:</p>" +
-          '<p><img src="cid:bw1_cid" alt="Komiks BW" style="max-width:100%;border-radius:8px;"></p>';
-        try {
-          msg.reply("", {
-            htmlBody:     htmlBodyBW1,
-            inlineImages: inlineImagesBW1,
-            attachments:  [bwBlob1],
-            name:         "Komiks AI BW – Autoresponder"
-          });
-          console.log("Wysłano obrazek 1 BW -> " + recipient);
-        } catch(e) {
-          MailApp.sendEmail({
-            to: recipient, subject: "RE: " + subject + " [komiks BW]",
-            htmlBody: htmlBodyBW1, inlineImages: inlineImagesBW1,
-            attachments: [bwBlob1], name: "Komiks AI BW – Autoresponder"
-          });
-        }
-      }
-    } catch(e) { console.error("Błąd BW obrazka 1: " + e.message); }
   }
 
-  // ── Mail 2: komiks retro-pop (kolor z FLUX) + 3333.txt ──
+  // ── Mail 2: PNG retro-pop + 3333.txt ──────────────────────────────────────
   if (data.image2 && data.image2.base64) {
     try {
       var inlineImages2 = {};
@@ -507,12 +504,10 @@ function executeObrazekMailSend(data, recipient, subject, msg) {
         '<p><img src="cid:obrazek2_cid" alt="Komiks Retro" style="max-width:100%;border-radius:8px;"></p>';
       try {
         msg.reply("", {
-          htmlBody:     htmlBody2,
-          inlineImages: inlineImages2,
-          attachments:  attachments2,
-          name:         "Komiks Retro – Autoresponder"
+          htmlBody: htmlBody2, inlineImages: inlineImages2,
+          attachments: attachments2, name: "Komiks Retro – Autoresponder"
         });
-        console.log("Wysłano obrazek 2 (kolor) + 3333.txt -> " + recipient);
+        console.log("Wysłano obrazek 2 (PNG) + 3333.txt -> " + recipient);
       } catch(e) {
         MailApp.sendEmail({
           to: recipient, subject: "RE: " + subject + " [retro]",
@@ -521,44 +516,72 @@ function executeObrazekMailSend(data, recipient, subject, msg) {
         });
       }
     } catch(e) { console.error("Błąd obrazka 2: " + e.message); }
+  }
 
-    // ── Mail 4: obrazek 2 po konwersji BW ──
-    try {
-      var bw2Base64 = _convertToBW(
-        data.image2.base64,
-        data.image2.content_type || "image/png",
-        webhookUrl
-      );
-      if (bw2Base64) {
-        var inlineImagesBW2 = {};
-        var bwBlob2 = Utilities.newBlob(
-          Utilities.base64Decode(bw2Base64),
-          "image/png",
-          "komiks_retro_bw.png"
+  // ── Wywołaj /webhook_gif — odeślij oba PNG do Rendera po GIFy ─────────────
+  var png1b64 = (data.image  && data.image.base64)  ? data.image.base64  : null;
+  var png2b64 = (data.image2 && data.image2.base64) ? data.image2.base64 : null;
+
+  if ((png1b64 || png2b64) && webhookUrl) {
+    var gifData = _callWebhookGif(png1b64, png2b64, webhookUrl);
+
+    // ── Mail 3: GIF animowany — komiks czarno-biały ──────────────────────────
+    if (gifData && gifData.gif1 && gifData.gif1.base64) {
+      try {
+        var gifBlob1 = Utilities.newBlob(
+          Utilities.base64Decode(gifData.gif1.base64),
+          gifData.gif1.content_type || "image/gif",
+          gifData.gif1.filename     || "komiks_ai.gif"
         );
-        inlineImagesBW2["bw2_cid"] = bwBlob2;
-        var htmlBodyBW2 =
-          "<p>Komiks Retro – wersja czarno-biała:</p>" +
-          '<p><img src="cid:bw2_cid" alt="Komiks Retro BW" style="max-width:100%;border-radius:8px;"></p>';
+        var htmlBodyGif1 =
+          "<p>Komiks AI – animacja (zoom po panelach):</p>" +
+          "<p><i>Animowany GIF w załączniku.</i></p>";
         try {
           msg.reply("", {
-            htmlBody:     htmlBodyBW2,
-            inlineImages: inlineImagesBW2,
-            attachments:  [bwBlob2],
-            name:         "Komiks Retro BW – Autoresponder"
+            htmlBody: htmlBodyGif1, attachments: [gifBlob1],
+            name: "Komiks AI GIF – Autoresponder"
           });
-          console.log("Wysłano obrazek 2 BW -> " + recipient);
+          console.log("Wysłano GIF 1 -> " + recipient);
         } catch(e) {
           MailApp.sendEmail({
-            to: recipient, subject: "RE: " + subject + " [retro BW]",
-            htmlBody: htmlBodyBW2, inlineImages: inlineImagesBW2,
-            attachments: [bwBlob2], name: "Komiks Retro BW – Autoresponder"
+            to: recipient, subject: "RE: " + subject + " [komiks GIF]",
+            htmlBody: htmlBodyGif1, attachments: [gifBlob1],
+            name: "Komiks AI GIF – Autoresponder"
           });
         }
-      }
-    } catch(e) { console.error("Błąd BW obrazka 2: " + e.message); }
+      } catch(e) { console.error("Błąd GIF 1: " + e.message); }
+    }
+
+    // ── Mail 4: GIF animowany — komiks retro-pop ─────────────────────────────
+    if (gifData && gifData.gif2 && gifData.gif2.base64) {
+      try {
+        var gifBlob2 = Utilities.newBlob(
+          Utilities.base64Decode(gifData.gif2.base64),
+          gifData.gif2.content_type || "image/gif",
+          gifData.gif2.filename     || "komiks_ai_retro.gif"
+        );
+        var htmlBodyGif2 =
+          "<p>Komiks Retro – animacja (zoom po panelach):</p>" +
+          "<p><i>Animowany GIF w załączniku.</i></p>";
+        try {
+          msg.reply("", {
+            htmlBody: htmlBodyGif2, attachments: [gifBlob2],
+            name: "Komiks Retro GIF – Autoresponder"
+          });
+          console.log("Wysłano GIF 2 -> " + recipient);
+        } catch(e) {
+          MailApp.sendEmail({
+            to: recipient, subject: "RE: " + subject + " [retro GIF]",
+            htmlBody: htmlBodyGif2, attachments: [gifBlob2],
+            name: "Komiks Retro GIF – Autoresponder"
+          });
+        }
+      } catch(e) { console.error("Błąd GIF 2: " + e.message); }
+    }
   }
 }
+
+
 
 // ── Wysyłka: nawiązanie do poprzedniej wiadomości ────────────────────────────
 function executeNawiazanieMailSend(data, recipient, subject, msg) {
