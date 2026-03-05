@@ -271,15 +271,10 @@ def build_obrazek_section(body: str) -> dict:
 
     if status_parts:
         reply_html = (
-            "<p>Na podstawie Twojej treści automatycznie utworzyłem prompt "
-            f"do obrazków, które załączam ({' i '.join(status_parts)}):</p>"
-            f"<blockquote>{scene_html}</blockquote>"
+            f"<p>Komiks AI w załączniku ({' i '.join(status_parts)}).</p>"
         )
     else:
         reply_html = (
-            "<p>Na podstawie Twojej treści automatycznie utworzyłem prompt "
-            "do obrazków:</p>"
-            f"<blockquote>{scene_html}</blockquote>"
             "<p>Wystąpił błąd podczas generowania obrazków. Spróbuj ponownie za chwilę.</p>"
         )
 
