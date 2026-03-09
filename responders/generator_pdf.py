@@ -390,21 +390,28 @@ class _PDF:
         x2 = icon_x + icon_size
         y2 = icon_y
 
-        # Escape hint text dla PDF string
-        hint_safe = hint.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)").replace("\n", "\\n")
-        title_safe = f"Podpowiedź do pytania {qnum}".replace("(", "\\(").replace(")", "\\)")
+        # Kodowanie PDF UTF-16BE z BOM — jedyna metoda obsługująca polskie znaki
+        # w annotacjach ReportLab bez zewnętrznych fontów
+        def _pdf_utf16_str(text: str) -> str:
+            """Zwraca hex string <FEFF...> gotowy do wstawienia jako PDF string."""
+            bom_utf16 = b'\xfe\xff' + text.encode('utf-16-be')
+            return '<' + bom_utf16.hex().upper() + '>'
+
+        hint_pdf   = _pdf_utf16_str(hint)
+        title_pdf  = _pdf_utf16_str(f"Podpowiedz do pytania {qnum}")
+        ann_name_pdf = _pdf_utf16_str(ann_name)
 
         # Wstrzyknij annotation do strumienia PDF
         # /Subtype /Text = sticky note, /Open false = zamknięta domyślnie
         ann_obj = (
             f"<< /Type /Annot /Subtype /Text "
             f"/Rect [{x1:.2f} {y1:.2f} {x2:.2f} {y2:.2f}] "
-            f"/Contents ({hint_safe}) "
-            f"/T ({title_safe}) "
-            f"/NM ({ann_name}) "
+            f"/Contents {hint_pdf} "
+            f"/T {title_pdf} "
+            f"/NM {ann_name_pdf} "
             f"/Open false "
             f"/Color [1 0.9 0.4] "
-            f"/F 4 "  # Print flag
+            f"/F 4 "
             f">>"
         )
 

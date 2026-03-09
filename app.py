@@ -76,18 +76,22 @@ def webhook():
             return fn(*args, **kwargs)
 
     # ── FALA 1: lekkie respondery + nawiazanie ────────────────────────────────
-    wave1 = {
-        "zwykly":    lambda: run(build_zwykly_section, body),
-        "biznes":    lambda: run(build_biznes_section, body),
-        "nawiazanie": lambda: run(
-            build_nawiazanie_section,
-            body=body,
-            previous_body=previous_body,
-            previous_subject=previous_subject,
-            sender=sender,
-            sender_name=sender_name,
-        ),
-    }
+    # wants_text_reply = True gdy email ma dostać zwykłą odpowiedź tekstową AI
+    # (false gdy email jest TYLKO dla generator_pdf bez innych flag/list)
+    wants_text_reply = bool(data.get("wants_text_reply", True))
+
+    wave1 = {}
+    if wants_text_reply:
+        wave1["zwykly"] = lambda: run(build_zwykly_section, body)
+        wave1["biznes"] = lambda: run(build_biznes_section, body)
+    wave1["nawiazanie"] = lambda: run(
+        build_nawiazanie_section,
+        body=body,
+        previous_body=previous_body,
+        previous_subject=previous_subject,
+        sender=sender,
+        sender_name=sender_name,
+    )
     if wants_scrabble:
         wave1["scrabble"] = lambda: run(build_scrabble_section, body)
 
