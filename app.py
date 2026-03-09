@@ -28,6 +28,7 @@ from responders.obrazek      import build_obrazek_section
 from responders.nawiazanie   import build_nawiazanie_section
 from responders.gif_maker    import make_gif
 from responders.generator_pdf import build_generator_pdf_section
+from responders.smierc        import build_smierc_section
 
 app = Flask(__name__)
 
@@ -138,6 +139,48 @@ def webhook():
     )
 
     return jsonify(response_data), 200
+
+
+@app.route("/webhook_smierc", methods=["POST"])
+def webhook_smierc():
+    """
+    Pośmiertny autoresponder Pawła.
+    Oczekiwany JSON: sender, body, etap, data_smierci, historia
+    """
+    data = request.json or {}
+
+    sender       = data.get("sender",       "")
+    body         = data.get("body",         "")[:2000]
+    etap         = int(data.get("etap",     1))
+    data_smierci = data.get("data_smierci", "nieznanego dnia")
+    historia     = data.get("historia",     [])
+
+    if not body:
+        return jsonify({"error": "Brak treści wiadomości"}), 400
+
+    app.logger.info(
+        "webhook_smierc — sender=%s | etap=%d | historia=%d wpisów",
+        sender, etap, len(historia)
+    )
+
+    wynik = build_smierc_section(
+        sender_email     = sender,
+        body             = body,
+        etap             = etap,
+        data_smierci_str = data_smierci,
+        historia         = historia,
+    )
+
+    wynik["reply_html"] = wynik.get("reply_html", "") + \
+        "<p><i>W razie dalszych pytań pisz śmiało.</i></p>"
+
+    app.logger.info(
+        "webhook_smierc — nowy_etap=%d | html=%d znaków",
+        wynik.get("nowy_etap", etap),
+        len(wynik.get("reply_html", ""))
+    )
+
+    return jsonify(wynik), 200
 
 
 @app.route("/webhook_gif", methods=["POST"])
