@@ -386,7 +386,7 @@ def build_smierc_section(
         historia_txt = _format_historia(historia)
 
         # Wybierz właściwy plik promptu zależnie od etapu
-        if etap <= 6:
+        if etap <= 7:
             prompt_file = FILE_PAWEL_SYSTEM_1_6
             fallback_sys = (
                 "Jesteś Pawłem — zmarłym mężczyzną piszącym z zaświatów. "
