@@ -43,9 +43,9 @@ FILE_WYSLANNIK_FLUX_GROQ_SYS   = os.path.join(PROMPTS_DIR, "requiem_WYSLANNIK_fl
 FILE_WYSLANNIK_IMAGE_STYLE     = os.path.join(PROMPTS_DIR, "requiem_WYSLANNIK_IMAGE_STYLE.txt")
 
 # ── Stałe FLUX ────────────────────────────────────────────────────────────────
-HF_API_URL  = "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell"
-HF_STEPS    = 5
-HF_GUIDANCE = 5
+HF_API_URL  = "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-dev"
+HF_STEPS    = 25
+HF_GUIDANCE = 3.5
 TIMEOUT_SEC = 55
 
 # ── Groq modele ───────────────────────────────────────────────────────────────
