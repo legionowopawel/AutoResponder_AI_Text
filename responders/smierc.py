@@ -3,16 +3,21 @@ responders/smierc.py
 Pośmiertny autoresponder Pawła.
 
 Tryby:
-  ETAP 1-6  — narracja pozagrobowa + obrazek PNG + filmik MP4
-  ETAP 7    — reinkarnacja + obrazek PNG
-  ETAP 8+   — WYSŁANNIK: odpowiedź DeepSeek po polsku
-              + obrazek FLUX z promptem wygenerowanym przez Groq
-              + załącznik _.txt z pełnym promptem wysłanym do FLUX
+  ETAP 1-6   — narracja pozagrobowa + obrazek PNG + filmik MP4
+  ETAP 7     — reinkarnacja + obrazek PNG + filmik MP4
+  ETAP 8-19  — Paweł jako robotnik niebieski (remont) + obrazek PNG
+  ETAP 20-49 — Paweł jako robotnik niebieski (remont, etapy kosmiczne) + obrazek PNG
+  ETAP 50    — finałowy etap Pawła (ostatnie szlify) + obrazek PNG
+  ETAP 51+   — WYSŁANNIK: odpowiedź DeepSeek po polsku
+               + obrazek FLUX z promptem wygenerowanym przez Groq
+               + załącznik _.txt z pełnym promptem wysłanym do FLUX
 
 Pliki promptów w katalogu prompts/:
   requiem_PAWEL_system_1-6.txt            — system prompt Pawła (etapy 1-6)
   requiem_PAWEL_system_7.txt              — system prompt Pawła (etap 7, reinkarnacja)
-  requiem_WYSLANNIK_system_8_.txt         — system prompt Wysłannika (etap 8+) → DeepSeek
+  requiem_PAWEL_system_8-19.txt           — system prompt Pawła (etapy 8-19, remont nieba)
+  requiem_PAWEL_system_20-50.txt          — system prompt Pawła (etapy 20-50, remont kosmiczny)
+  requiem_WYSLANNIK_system_8_.txt         — system prompt Wysłannika (etap 51+) → DeepSeek
   requiem_WYSLANNIK_flux_groq_system.txt  — system prompt dla Groq → generuje prompt FLUX
   requiem_WYSLANNIK_IMAGE_STYLE.txt       — styl obrazka FLUX (fallback)
 
@@ -38,6 +43,8 @@ ETAPY_FILE  = os.path.join(PROMPTS_DIR, "pozagrobowe.txt")
 # ── Ścieżki plików promptów ───────────────────────────────────────────────────
 FILE_PAWEL_SYSTEM_1_6          = os.path.join(PROMPTS_DIR, "requiem_PAWEL_system_1-6.txt")
 FILE_PAWEL_SYSTEM_7            = os.path.join(PROMPTS_DIR, "requiem_PAWEL_system_7.txt")
+FILE_PAWEL_SYSTEM_8_19         = os.path.join(PROMPTS_DIR, "requiem_PAWEL_system_8-19.txt")
+FILE_PAWEL_SYSTEM_20_50        = os.path.join(PROMPTS_DIR, "requiem_PAWEL_system_20-50.txt")
 FILE_WYSLANNIK_SYSTEM_8_       = os.path.join(PROMPTS_DIR, "requiem_WYSLANNIK_system_8_.txt")
 FILE_WYSLANNIK_FLUX_GROQ_SYS   = os.path.join(PROMPTS_DIR, "requiem_WYSLANNIK_flux_groq_system.txt")
 FILE_WYSLANNIK_IMAGE_STYLE     = os.path.join(PROMPTS_DIR, "requiem_WYSLANNIK_IMAGE_STYLE.txt")
@@ -323,9 +330,9 @@ def build_smierc_section(
       }
     """
     etapy    = _load_etapy()
-    max_etap = max(etapy.keys()) if etapy else 7
+    max_etap = max(etapy.keys()) if etapy else 50
 
-    # ── WYSŁANNIK (etap 8+) ───────────────────────────────────────────────────
+    # ── WYSŁANNIK (etap po max_etap, czyli 51+) ───────────────────────────────
     if etap > max_etap:
         historia_txt = _format_historia(historia)
 
@@ -377,16 +384,41 @@ def build_smierc_section(
     if etap < max_etap:
         etap_tresc   = etapy.get(etap, "Podróż trwa")
         historia_txt = _format_historia(historia)
-        system_tmpl  = _load_txt(
-            FILE_PAWEL_SYSTEM_1_6,
-            fallback=(
+
+        # Wybierz właściwy plik promptu zależnie od etapu
+        if etap <= 6:
+            prompt_file = FILE_PAWEL_SYSTEM_1_6
+            fallback_sys = (
                 "Jesteś Pawłem — zmarłym mężczyzną piszącym z zaświatów. "
                 "Piszesz po polsku. Ton: spokojny, lekko absurdalny, z humorem. "
                 "Odpowiedź maksymalnie 5 zdań. Podpisz się: '— Autoresponder Pawła-zza-światów'. "
                 "Koniecznie wspomnij że umarłeś na suchoty dnia {data_smierci_str}. "
                 "Opisz swój aktualny etap. Nie wspominaj Księgi Urantii."
             )
-        )
+        elif etap <= 19:
+            prompt_file = FILE_PAWEL_SYSTEM_8_19
+            fallback_sys = (
+                "Jesteś Pawłem — zmarłym mężczyzną piszącym z zaświatów. "
+                "Piszesz po polsku. Ton: spokojny, absurdalny, z humorem robotniczym. "
+                "Odpowiedź maksymalnie 5 zdań. Podpisz się: '— Autoresponder Pawła-zza-światów'. "
+                "Koniecznie wspomnij że umarłeś na suchoty dnia {data_smierci_str}. "
+                "Nawiąż do wiadomości tej osoby paradoksalnie chwaląc, że na Ziemi jest lepiej niż w niebie. "
+                "Opisz swój aktualny etap rozwijając podany punkt - używaj konkretnych szczegółów roboczych. "
+                "Nie wspominaj Księgi Urantii."
+            )
+        else:
+            prompt_file = FILE_PAWEL_SYSTEM_20_50
+            fallback_sys = (
+                "Jesteś Pawłem — zmarłym mężczyzną piszącym z zaświatów. "
+                "Piszesz po polsku. Ton: spokojny, absurdalny, z humorem robotniczym. "
+                "Odpowiedź maksymalnie 5 zdań. Podpisz się: '— Autoresponder Pawła-zza-światów'. "
+                "Koniecznie wspomnij że umarłeś na suchoty dnia {data_smierci_str}. "
+                "Nawiąż do wiadomości tej osoby paradoksalnie chwaląc, że na Ziemi jest lepiej niż w niebie. "
+                "Opisz swój aktualny etap rozwijając podany punkt - używaj konkretnych szczegółów roboczych. "
+                "Nie wspominaj Księgi Urantii."
+            )
+
+        system_tmpl = _load_txt(prompt_file, fallback=fallback_sys)
         system     = system_tmpl.replace("{data_smierci_str}", data_smierci_str)
         user_msg   = f"Etap w zaświatach: {etap_tresc}\nWiadomość: {body}\nHistoria:\n{historia_txt}"
         wynik      = call_deepseek(system, user_msg, MODEL_TYLER)
@@ -402,19 +434,19 @@ def build_smierc_section(
             "debug_txt":  None,
         }
 
-    # ── ETAP 7 — reinkarnacja ─────────────────────────────────────────────────
-    etap_tresc   = etapy.get(max_etap, "Reinkarnacja nadchodzi nieuchronnie")
+    # ── ETAP OSTATNI (max_etap = 50) — finałowe szlify przed końcem ─────────────
+    etap_tresc   = etapy.get(max_etap, "Ostatnie szlify przed końcem świata")
     historia_txt = _format_historia(historia)
     system_tmpl  = _load_txt(
-        FILE_PAWEL_SYSTEM_7,
+        FILE_PAWEL_SYSTEM_20_50,
         fallback=(
             "Jesteś Pawłem — zmarłym mężczyzną piszącym z zaświatów. "
-            "Piszesz po polsku. Ton: spokojny, wzruszający, tajemniczy. "
-            "Odpowiedź maksymalnie 5 zdań. "
+            "Piszesz po polsku. Ton: spokojny, absurdalny, z humorem robotniczym. "
+            "Odpowiedź maksymalnie 5 zdań. Podpisz się: '— Autoresponder Pawła-zza-światów'. "
             "Umarłem na suchoty dnia {data_smierci_str}. "
-            "Poinformuj że właśnie nadchodzi moment reinkarnacji. "
-            "Nie możesz powiedzieć gdzie ani kim się urodzisz. "
-            "Pożegnaj się ciepło. Nie wspominaj Księgi Urantii."
+            "Nawiąż do wiadomości tej osoby paradoksalnie chwaląc, że na Ziemi jest lepiej niż w niebie. "
+            "Opisz finałowy etap remontu nieba — ostatnie szlify przed końcem świata. "
+            "Nie wspominaj Księgi Urantii."
         )
     )
     system     = system_tmpl.replace("{data_smierci_str}", data_smierci_str)
@@ -428,6 +460,6 @@ def build_smierc_section(
         "reply_html": reply_html,
         "nowy_etap":  etap + 1,
         "image":      _get_etap_image(max_etap),
-        "mp4":        _get_etap_mp4(max_etap),
+        "mp4":        None,
         "debug_txt":  None,
     }
