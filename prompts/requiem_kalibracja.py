@@ -241,8 +241,11 @@ def save_all(state: dict) -> Path:
         f"FLUX prompt provider: {state.get('flux_prov','')}\n\n"
         f"--- Odpowiedź Wysłannika (źródło promptu FLUX) ---\n"
         f"{state.get('wyslannik','')}\n\n"
-        f"--- Proponowany tekst wysłany do FLUX.1-schnell ---\n"
+        f"--- Proponowany tekst wysłany do FLUX ---\n"
         f"{state.get('flux','')}\n\n"
+        f"--- Kontrola długości promptu FLUX ---\n"
+        f"Liczba słów: {len(state.get('flux','').split())}/75"
+        f"{'  ⚠ ZA DŁUGI — FLUX ignoruje nadmiar!' if len(state.get('flux','').split()) > 75 else '  ✓ OK'}\n\n"
         f"--- Parametry FLUX ---\n"
         f"Model: {getattr(_smierc, 'HF_API_URL', '?').split('/')[-1] if _SMIERC_OK else '?'}\n"
         f"num_inference_steps: {getattr(_smierc, 'HF_STEPS', '?') if _SMIERC_OK else '?'}\n"
@@ -305,13 +308,22 @@ def _build_raport(state: dict, log: list) -> str:
             ]
 
     if state.get("flux"):
+        flux_text  = state["flux"]
+        word_count = len(flux_text.split())
+        if word_count > 75:
+            word_warn = f"  ⚠ ZA DŁUGI! ({word_count} słów > limit 75) — FLUX ignoruje nadmiar"
+        elif word_count > 60:
+            word_warn = f"  ⚡ Bliski limitu ({word_count} słów)"
+        else:
+            word_warn = f"  ✓ OK ({word_count} słów)"
         lines += [
             sep,
             "=== PROMPT FLUX ===",
             f"Provider: {state.get('flux_prov','?')}",
             f"Czas generowania: {state.get('flux_czas','?')}",
+            f"Długość: {word_count} słów / limit 75{word_warn}",
             "",
-            state["flux"],
+            flux_text,
             "",
         ]
 
