@@ -279,14 +279,13 @@ def _generate_flux_image(prompt: str):
 def _build_debug_txt(wyslannik_text: str, flux_prompt: str,
                      flux_provider: str, etap: int) -> dict:
     content = (
-        f"=== REQUIEM RESPONDER — DEBUG FLUX ===\n"
         f"Etap: {etap}\n\n"
+        f"{flux_prompt}\n\n\n"
+        f"=== REQUIEM RESPONDER — DEBUG FLUX ===\n\n"
         f"--- Odpowiedź Wysłannika (źródło promptu FLUX) ---\n"
         f"{wyslannik_text}\n\n"
         f"--- Provider który wygenerował prompt FLUX ---\n"
         f"{flux_provider}\n\n"
-        f"--- Proponowany tekst wysłany do FLUX.1-schnell ---\n"
-        f"{flux_prompt}\n\n"
         f"--- Parametry FLUX ---\n"
         f"Model: FLUX.1-schnell\n"
         f"num_inference_steps: {HF_STEPS}\n"
