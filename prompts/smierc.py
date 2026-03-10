@@ -276,23 +276,47 @@ def _generate_flux_image(prompt: str):
 
 
 # ── Zbuduj załącznik _.txt ────────────────────────────────────────────────────
-def _build_debug_txt(wyslannik_text: str, flux_prompt: str,
+def _build_debug_txt(tekst_odpowiedzi: str, flux_prompt: str,
                      flux_provider: str, etap: int) -> dict:
-    content = (
-        f"=== REQUIEM RESPONDER — DEBUG FLUX ===\n"
-        f"Etap: {etap}\n\n"
-        f"--- Odpowiedź Wysłannika (źródło promptu FLUX) ---\n"
-        f"{wyslannik_text}\n\n"
-        f"--- Provider który wygenerował prompt FLUX ---\n"
-        f"{flux_provider}\n\n"
-        f"--- Proponowany tekst wysłany do FLUX.1-schnell ---\n"
-        f"{flux_prompt}\n\n"
-        f"--- Parametry FLUX ---\n"
-        f"Model: FLUX.1-schnell\n"
-        f"num_inference_steps: {HF_STEPS}\n"
-        f"guidance_scale: {HF_GUIDANCE}\n"
-        f"API URL: {HF_API_URL}\n"
-    )
+    """
+    Załącznik _.txt wysyłany do odbiorcy od etapu 8.
+    Zawiera gotowy prompt FLUX do samodzielnego użycia w generatorze obrazków.
+    """
+    separator = "=" * 60
+    content = "\n".join([
+        separator,
+        "REQUIEM — PROMPT DO GENERATORA OBRAZKÓW",
+        f"Etap: {etap}",
+        separator,
+        "",
+        "Poniżej znajdziesz prompt który możesz wkleić do dowolnego",
+        "generatora obrazków AI (FLUX, Midjourney, Stable Diffusion itp.)",
+        "aby samodzielnie wygenerować obrazek do tej wiadomości.",
+        "",
+        separator,
+        ">>> PROMPT DO SKOPIOWANIA (wklej go do generatora):",
+        separator,
+        "",
+        flux_prompt,
+        "",
+        separator,
+        "SZCZEGÓŁY TECHNICZNE",
+        separator,
+        f"Generator użyty przez autoresponder: FLUX.1-schnell",
+        f"API: {HF_API_URL}",
+        f"Kroki: {HF_STEPS}  |  Guidance: {HF_GUIDANCE}",
+        f"Prompt wygenerowany przez: {flux_provider}",
+        "",
+        separator,
+        "TREŚĆ WIADOMOŚCI (podstawa promptu):",
+        separator,
+        "",
+        tekst_odpowiedzi,
+        "",
+        separator,
+        "Projekt: Requiem AutoResponder",
+        separator,
+    ])
     return {
         "base64":       base64.b64encode(content.encode("utf-8")).decode("ascii"),
         "content_type": "text/plain",
@@ -364,9 +388,11 @@ def build_smierc_section(
         # 2. Prompt FLUX — Groq (fallback: DeepSeek, potem statyczny)
         flux_prompt, flux_provider = _generate_flux_prompt(wynik_tekst or body)
 
-        # 3. Generuj obrazek
-        image     = _generate_flux_image(flux_prompt)
+        # 3. _.txt budujemy ZAWSZE przed generowaniem obrazka
         debug_txt = _build_debug_txt(wynik_tekst or "", flux_prompt, flux_provider, etap)
+
+        # 4. Generuj obrazek
+        image = _generate_flux_image(flux_prompt)
 
         current_app.logger.info(
             "[wyslannik] etap=%d | flux_prompt=%.100s | image=%s",
@@ -433,9 +459,13 @@ def build_smierc_section(
             image     = static_image
             debug_txt = None
         elif etap >= 8:
+            current_app.logger.info("[pawel-flux] etap=%d START generowania FLUX", etap)
             flux_prompt, flux_provider = _generate_flux_prompt(wynik or etap_tresc)
-            image     = _generate_flux_image(flux_prompt)
+            current_app.logger.info("[pawel-flux] prompt=%.120s provider=%s", flux_prompt, flux_provider)
+            # _.txt budujemy ZAWSZE — nawet jeśli FLUX potem padnie, odbiorca dostanie prompt
             debug_txt = _build_debug_txt(wynik or "", flux_prompt, flux_provider, etap)
+            image     = _generate_flux_image(flux_prompt)
+            current_app.logger.info("[pawel-flux] etap=%d image=%s debug_txt=TAK", etap, bool(image))
         else:
             image     = None
             debug_txt = None
@@ -470,10 +500,21 @@ def build_smierc_section(
         f"<p>{wynik}</p>" if wynik
         else "<p>Nadszedł czas. Reinkarnuję się. Do zobaczenia po drugiej stronie.</p>"
     )
+    # Etap 50 — FLUX jak wszystkie etapy 8+
+    static_image = _get_etap_image(max_etap)
+    if static_image:
+        image     = static_image
+        debug_txt = None
+    else:
+        current_app.logger.info("[pawel-flux] etap=%d (ostatni) START generowania FLUX", max_etap)
+        flux_prompt, flux_provider = _generate_flux_prompt(wynik or etap_tresc)
+        debug_txt = _build_debug_txt(wynik or "", flux_prompt, flux_provider, max_etap)
+        image     = _generate_flux_image(flux_prompt)
+        current_app.logger.info("[pawel-flux] etap=%d image=%s", max_etap, bool(image))
     return {
         "reply_html": reply_html,
         "nowy_etap":  etap + 1,
-        "image":      _get_etap_image(max_etap),
+        "image":      image,
         "mp4":        None,
-        "debug_txt":  None,
+        "debug_txt":  debug_txt,
     }
