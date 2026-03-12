@@ -101,7 +101,25 @@ def _resolve_styl_flux(styl_raw: str) -> str:
 
 # ── XLSX ──────────────────────────────────────────────────────────────────────
 
-def _parse_int(val) -> int | None:
+def _resolve_system_prompt(styl_plik: str, system_prompt_inline: str) -> str:
+    """
+    Ustala ostateczny system prompt:
+      1. Jeśli styl_odpowiedzi_tekstowej wpisany → wczytaj plik z prompts/
+      2. Jeśli plik nie istnieje → użyj styl_plik jako tekst wprost
+      3. Jeśli styl_odpowiedzi_tekstowej pusty → użyj system_prompt z kolumny F
+      4. Jeśli oba puste → DEFAULT_SYSTEM_PROMPT
+    """
+    if styl_plik:
+        path = os.path.join(PROMPTS_DIR, styl_plik)
+        content = _load_txt(path, fallback="")
+        if content:
+            current_app.logger.info("[system] Wczytano plik stylu odpowiedzi: %s", styl_plik)
+            return content
+        current_app.logger.warning("[system] Brak pliku %s — używam jako tekst wprost", styl_plik)
+        return styl_plik
+    if system_prompt_inline:
+        return system_prompt_inline
+    return DEFAULT_SYSTEM_PROMPT
     try:
         return int(float(str(val).strip()))
     except (ValueError, TypeError):
@@ -156,12 +174,13 @@ def _load_xlsx() -> dict:
                 or "0"
             )
             etapy[etap_num] = {
-                "opis":          row_dict.get("opis",          ""),
-                "obraz":         row_dict.get("obraz",         ""),
-                "video":         row_dict.get("video",         ""),
-                "obrazki_ai":    _parse_int(obrazki_ai_val) or 0,
-                "system_prompt": row_dict.get("system_prompt", ""),
-                "styl_flux":     style_map.get(etap_num, ""),
+                "opis":                       row_dict.get("opis",                       ""),
+                "obraz":                      row_dict.get("obraz",                      ""),
+                "video":                      row_dict.get("video",                      ""),
+                "obrazki_ai":                 _parse_int(obrazki_ai_val) or 0,
+                "system_prompt":              row_dict.get("system_prompt",              ""),
+                "styl_odpowiedzi_tekstowej":  row_dict.get("styl_odpowiedzi_tekstowej",  ""),
+                "styl_flux":                  style_map.get(etap_num, ""),
             }
 
         wb.close()
@@ -246,6 +265,33 @@ def _compress_images_ai(images: list, n_obrazkow: int) -> list:
             "filename":     fname,
         })
     return result
+    """
+    Parsuje string z listą plików oddzielonych przecinkami.
+    Szuka każdego pliku w base_dir.
+    Zwraca listę {base64, content_type, filename}.
+    """
+    results = []
+    if not file_list_str:
+        return results
+    for fname in file_list_str.split(","):
+        fname = fname.strip()
+        if not fname:
+            continue
+        path = os.path.join(base_dir, fname)
+        b64  = _file_to_base64(path)
+        if b64:
+            results.append({
+                "base64":       b64,
+                "content_type": _guess_content_type(fname),
+                "filename":     fname,
+            })
+            current_app.logger.info("[media] OK: %s", fname)
+        else:
+            current_app.logger.warning("[media] Brak pliku: %s", path)
+    return results
+
+
+def _load_file_list(file_list_str: str, base_dir: str) -> list:
     """
     Parsuje string z listą plików oddzielonych przecinkami.
     Szuka każdego pliku w base_dir.
@@ -671,9 +717,14 @@ def build_smierc_section(
     obraz_lista   = row["obraz"]
     video_lista   = row["video"]
     obrazki_ai    = min(int(row.get("obrazki_ai", 0) or 0), MAX_AI_IMAGES)
-    system_prompt = row["system_prompt"] or DEFAULT_SYSTEM_PROMPT
     styl_flux     = _resolve_styl_flux(row["styl_flux"])
     historia_txt  = _format_historia(historia)
+
+    # System prompt: kolumna styl_odpowiedzi_tekstowej (plik) nadpisuje kolumnę system_prompt
+    system_prompt = _resolve_system_prompt(
+        row.get("styl_odpowiedzi_tekstowej", ""),
+        row.get("system_prompt", ""),
+    )
 
     # Python oblicza liczbę dni — AI nie liczy tego poprawnie
     dni = _oblicz_dni(data_smierci_str)
