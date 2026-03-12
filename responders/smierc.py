@@ -1,28 +1,31 @@
 """
 responders/smierc.py
-Pośmiertny autoresponder Pawła.
+Posmiertny autoresponder Pawla.
 
 Konfiguracja pochodzi z prompts/requiem_etapy.xlsx:
-  zakładka 'etapy':
-    etap, opis, obraz, video, obrazki_ai, system_prompt
-  zakładka 'style':
+  zakladka 'etapy' — kolumny czytane po POZYCJI (niezaleznie od nazwy):
+    A=etap, B=opis, C=obraz, D=video, E=kompresja_jpg, F=ilosc_obrazkow_ai
+    - kompresja_jpg      -> jakosc JPG w % (0 = PNG bez kompresji)
+    - ilosc_obrazkow_ai -> ile obrazkow FLUX wygenerowac (0=brak, 1/2/3/...=N)
+  zakladka 'style':
     etap, styl, styl_odpowiedzi_tekstowej
-    - styl                      → nazwa pliku .txt ze stylem FLUX (etapy 8+)
-    - styl_odpowiedzi_tekstowej → nazwa pliku .txt z alternatywnym system promptem (etapy 8+)
-      Jeśli podany, NADPISUJE system_prompt z zakładki etapy.
+    - styl                      -> nazwa pliku .txt ze stylem FLUX
+    - styl_odpowiedzi_tekstowej -> nazwa pliku .txt z system promptem
+      Jesli podany, NADPISUJE system_prompt z zakladki etapy.
 
 Tryby:
-  ETAP 1-max_etap  — Paweł pisze z zaświatów
-                     system prompt: styl_odpowiedzi_tekstowej z pliku (etapy 8+)
-                                    lub system_prompt z zakładki etapy (etapy 1-7)
-                     obrazek: statyczny PNG lub FLUX (gdy brak PNG i obrazki_ai>0)
-                     styl FLUX: wczytany z pliku wskazanego przez kolumnę styl
-  ETAP max_etap+1+ — WYSŁANNIK: DeepSeek + obrazek FLUX + _.txt debug
+  ETAP 1-max_etap  — Pawel pisze z zaswiatow
+  ETAP max_etap+1+ — WYSLANNIK: DeepSeek + obrazek FLUX + _.txt debug
 
-Podział API:
-  DeepSeek → tekst emaila (call_deepseek / MODEL_TYLER)
-  Groq     → kreatywny prompt FLUX
-  Fallback → jeśli jeden zawodzi, używa drugiego
+Podzial API:
+  DeepSeek -> tekst emaila (call_deepseek / MODEL_TYLER)
+  Groq     -> kreatywny prompt FLUX
+  Fallback -> jesli jeden zawodzi, uzywa drugiego
+
+Obrazki FLUX:
+  Kazdy obrazek generowany z losowym seed -> rozne wariacje tego samego promptu.
+  Jesli tokeny HF sie wyczerpaja przed osiagnieciem zadanej liczby,
+  wysylane sa te ktore udalo sie wygenerowac.
 """
 
 import os
@@ -56,15 +59,15 @@ GROQ_MODEL   = "llama-3.3-70b-versatile"
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 DEFAULT_SYSTEM_PROMPT = (
-    "Jesteś Pawłem — zmarłym mężczyzną piszącym z zaświatów. "
+    "Jestes Pawlem — zmarlym mezczyzna piszacym z zaswiatow. "
     "Piszesz po polsku. Ton: spokojny, lekko absurdalny, z humorem. "
-    "Odpowiedź maksymalnie 5 zdań. Podpisz się: — Autoresponder Pawła-zza-światów. "
-    "Wspomnij że umarłeś na suchoty dnia {data_smierci_str}."
+    "Odpowiedz maksymalnie 5 zdan. Podpisz sie: — Autoresponder Pawla-zza-swiatow. "
+    "Wspomnij ze umarles na suchoty dnia {data_smierci_str}."
 )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ŁADOWANIE XLSX
+# LADOWANIE XLSX
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _load_config_xlsx() -> tuple:
@@ -84,13 +87,13 @@ def _load_config_xlsx() -> tuple:
             df_etapy = df_etapy.where(pd.notna(df_etapy), "")
             for _, row in df_etapy.iterrows():
                 try:
-                    # Czytamy po pozycji kolumny (niezależnie od nazwy nagłówka):
+                    # Czytamy po pozycji kolumny (niezaleznie od nazwy naglowka):
                     # A=0 etap, B=1 opis, C=2 obraz, D=3 video,
                     # E=4 kompresja_jpg, F=5 ilosc_obrazkow_ai
                     vals = row.tolist()
                     etap_nr = int(float(str(vals[0])))
                     etapy_data[etap_nr] = {
-                        "etap":              vals[0],
+                        "etap":              str(vals[0]),
                         "opis":              str(vals[1]) if len(vals) > 1 else "",
                         "obraz":             str(vals[2]) if len(vals) > 2 else "",
                         "video":             str(vals[3]) if len(vals) > 3 else "",
@@ -100,7 +103,7 @@ def _load_config_xlsx() -> tuple:
                 except (ValueError, KeyError, IndexError):
                     continue
         else:
-            current_app.logger.warning("[smierc] Brak zakładki 'etapy' w xlsx.")
+            current_app.logger.warning("[smierc] Brak zakladki 'etapy' w xlsx.")
 
         df_style = sheets.get("style")
         if df_style is not None:
@@ -112,32 +115,37 @@ def _load_config_xlsx() -> tuple:
                 except (ValueError, KeyError):
                     continue
         else:
-            current_app.logger.warning("[smierc] Brak zakładki 'style' w xlsx.")
+            current_app.logger.warning("[smierc] Brak zakladki 'style' w xlsx.")
 
     except Exception as e:
-        current_app.logger.error("[smierc] Błąd czytania xlsx: %s", e)
+        current_app.logger.error("[smierc] Blad czytania xlsx: %s", e)
 
     return etapy_data, style_data
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# NARZĘDZIA POMOCNICZE
+# NARZEDZIA POMOCNICZE
 # ═══════════════════════════════════════════════════════════════════════════════
+
+def _parse_int_col(val, default: int = 0) -> int:
+    """Parsuje wartosc z komorki xlsx na int."""
+    s = str(val).strip()
+    try:
+        return int(float(s)) if s not in ("", "nan") else default
+    except (ValueError, TypeError):
+        return default
+
 
 def _load_txt(path: str, fallback: str = "") -> str:
     try:
         with open(path, encoding="utf-8") as f:
             return f.read().strip()
     except Exception as e:
-        current_app.logger.warning("Błąd wczytywania pliku %s: %s", path, e)
+        current_app.logger.warning("Blad wczytywania pliku %s: %s", path, e)
         return fallback
 
 
 def _load_style_file(filename: str) -> str:
-    """
-    Wczytuje plik stylu/promptu wskazany przez nazwę pliku z xlsx.
-    Szuka w katalogu prompts/. Zwraca "" jeśli puste lub brak pliku.
-    """
     if not filename or not filename.strip():
         return ""
     path = os.path.join(PROMPTS_DIR, filename.strip())
@@ -168,9 +176,7 @@ def _get_etap_image(etap: int, filename: str = ""):
     return None
 
 
-# Mapowanie rozszerzeń na content-type (wideo, dokumenty, obrazy, inne)
 _ATTACHMENT_MIME = {
-    # wideo
     ".mp4":  "video/mp4",
     ".webm": "video/webm",
     ".avi":  "video/x-msvideo",
@@ -180,7 +186,6 @@ _ATTACHMENT_MIME = {
     ".3gp":  "video/3gpp",
     ".flv":  "video/x-flv",
     ".wmv":  "video/x-ms-wmv",
-    # dokumenty
     ".pdf":  "application/pdf",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".doc":  "application/msword",
@@ -188,13 +193,11 @@ _ATTACHMENT_MIME = {
     ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     ".txt":  "text/plain",
     ".csv":  "text/csv",
-    # obrazy
     ".jpg":  "image/jpeg",
     ".jpeg": "image/jpeg",
     ".png":  "image/png",
     ".gif":  "image/gif",
     ".webp": "image/webp",
-    # audio
     ".mp3":  "audio/mpeg",
     ".ogg":  "audio/ogg",
     ".wav":  "audio/wav",
@@ -206,19 +209,14 @@ def _get_attachment_mime(filename: str) -> str:
 
 
 def _get_etap_video(etap: int, filename: str = ""):
-    """
-    Wczytuje plik z kolumny 'video' dla etapu.
-    Obsługuje dowolny format — wideo, PDF, dokumenty, audio, obrazy.
-    Szuka pliku w media/mp4/niebo/ (nazwa katalogu historyczna, ale przyjmuje dowolny plik).
-    """
     if not filename.strip():
-        return None  # brak wpisu w kolumnie video — nic nie dołączaj
+        return None
     name = filename.strip()
     path = os.path.join(MEDIA_DIR, "mp4", "niebo", name)
     b64  = _file_to_base64(path)
     if b64:
         mime = _get_attachment_mime(name)
-        current_app.logger.info("Załącznik video etapu %d OK (%s, %s)", etap, name, mime)
+        current_app.logger.info("Zalacznik video etapu %d OK (%s, %s)", etap, name, mime)
         return {"base64": b64, "content_type": mime, "filename": name}
     current_app.logger.warning("Brak pliku video etapu %d: %s", etap, path)
     return None
@@ -226,39 +224,24 @@ def _get_etap_video(etap: int, filename: str = ""):
 
 def _format_historia(historia: list) -> str:
     if not historia:
-        return "(brak poprzednich wiadomości)"
+        return "(brak poprzednich wiadomosci)"
     lines = []
     for h in historia[-3:]:
         lines.append(f"Osoba: {h.get('od', '')[:300]}")
-        lines.append(f"Paweł: {h.get('odpowiedz', '')[:300]}")
+        lines.append(f"Pawel: {h.get('odpowiedz', '')[:300]}")
     return "\n".join(lines)
 
 
-def _parse_obrazki_ai(val) -> int:
-    s = str(val).strip()
-    try:
-        return int(float(s)) if s not in ("", "nan") else 0
-    except (ValueError, TypeError):
-        return 0
-
-
-def _compress_flux_image(image_obj: dict, obrazki_ai: int) -> dict:
+def _compress_flux_image(image_obj: dict, kompresja_jpg: int) -> dict:
     """
-    Kompresuje obrazek FLUX do JPG w zależności od wartości obrazki_ai:
-      1     -> PNG bez kompresji (zwraca oryginał)
-      2     -> JPG, jakość 90%
-      3-5   -> JPG, jakość 60%
-      6+    -> JPG, jakość 50%
+    Kompresuje obrazek FLUX:
+      0   -> PNG bez kompresji
+      1+  -> JPG w podanej jakosci % (np. 90 = JPG 90%)
     """
-    if obrazki_ai <= 1:
-        return image_obj  # PNG, bez zmian
+    if kompresja_jpg <= 0:
+        return image_obj
 
-    if obrazki_ai == 2:
-        quality = 90
-    elif obrazki_ai <= 5:
-        quality = 60
-    else:
-        quality = 50
+    quality = max(1, min(100, kompresja_jpg))
 
     try:
         from PIL import Image
@@ -270,11 +253,9 @@ def _compress_flux_image(image_obj: dict, obrazki_ai: int) -> dict:
         img.save(buf, format="JPEG", quality=quality, optimize=True)
         compressed_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
 
-        original_kb   = len(raw) // 1024
-        compressed_kb = len(buf.getvalue()) // 1024
         current_app.logger.info(
-            "[flux-compress] obrazki_ai=%d quality=%d%% %dKB -> %dKB",
-            obrazki_ai, quality, original_kb, compressed_kb
+            "[flux-compress] kompresja=%d%% %dKB -> %dKB",
+            quality, len(raw) // 1024, len(buf.getvalue()) // 1024
         )
         return {
             "base64":       compressed_b64,
@@ -310,7 +291,7 @@ def _call_groq(system: str, user: str) -> str | None:
             return result
         current_app.logger.warning("[groq] HTTP %s: %s", resp.status_code, resp.text[:150])
     except Exception as e:
-        current_app.logger.warning("[groq] Wyjątek: %s", str(e)[:100])
+        current_app.logger.warning("[groq] Wyjatek: %s", str(e)[:100])
     return None
 
 
@@ -323,7 +304,7 @@ def _load_word_list(path: str) -> list:
                 if line and not line.startswith("#"):
                     words.append(line.lower())
     except Exception as e:
-        current_app.logger.warning("Błąd wczytywania listy słów %s: %s", path, e)
+        current_app.logger.warning("Blad wczytywania listy slow %s: %s", path, e)
     return words
 
 
@@ -339,16 +320,12 @@ def _mutate_flux_prompt(prompt: str) -> tuple:
         if pattern.search(result):
             sufiks = random.choice(suffixes)
             result = pattern.sub(lambda m, s=sufiks: m.group(0) + "-" + s, result)
-            changes.append(f"{word} → {word}-{sufiks}")
-    current_app.logger.info("[mutate] Zmutowano słów: %d", len(changes))
+            changes.append(f"{word} -> {word}-{sufiks}")
+    current_app.logger.info("[mutate] Zmutowano slow: %d", len(changes))
     return result, changes
 
 
 def _generate_flux_prompt(source_text: str, groq_system_override: str = "") -> tuple:
-    """
-    groq_system_override: jeśli niepusty, używa go zamiast domyślnego pliku systemu Groqa.
-    Typowo pochodzi z pliku wskazanego przez styl_odpowiedzi_tekstowej (etapy 8-29).
-    """
     system = groq_system_override or _load_txt(
         FILE_WYSLANNIK_FLUX_GROQ_SYS,
         fallback=(
@@ -367,13 +344,13 @@ def _generate_flux_prompt(source_text: str, groq_system_override: str = "") -> t
         mutated, changes = _mutate_flux_prompt(result)
         return mutated, changes, "Groq"
 
-    current_app.logger.warning("[flux-prompt] Groq zawiódł — próbuję DeepSeek")
+    current_app.logger.warning("[flux-prompt] Groq zawiodl — probuje DeepSeek")
     result = call_deepseek(system, user, MODEL_TYLER)
     if result:
         mutated, changes = _mutate_flux_prompt(result)
         return mutated, changes, "DeepSeek (fallback)"
 
-    current_app.logger.warning("[flux-prompt] Oba API zawiodły — statyczny fallback")
+    current_app.logger.warning("[flux-prompt] Oba API zawiodly — statyczny fallback")
     image_style = _load_txt(
         FILE_WYSLANNIK_IMAGE_STYLE,
         fallback="surreal heavenly paradise, divine golden light, celestial beings, vivid colors, digital art"
@@ -387,9 +364,10 @@ def _get_hf_tokens() -> list:
 
 
 def _generate_flux_image(prompt: str):
+    """Generuje jeden obrazek FLUX z losowym seed. Zwraca dict lub None."""
     tokens = _get_hf_tokens()
     if not tokens:
-        current_app.logger.error("[flux] Brak tokenów HF!")
+        current_app.logger.error("[flux] Brak tokenow HF!")
         return None
     payload = {
         "inputs": prompt,
@@ -406,46 +384,81 @@ def _generate_flux_image(prompt: str):
             resp = requests.post(HF_API_URL, headers=headers, json=payload, timeout=TIMEOUT_SEC)
             if resp.status_code == 200:
                 current_app.logger.info("[flux] sukces token=%s PNG %d B", name, len(resp.content))
-                return {"base64": base64.b64encode(resp.content).decode("ascii"),
-                        "content_type": "image/png", "filename": "niebo_wyslannik.png"}
+                return {
+                    "base64":       base64.b64encode(resp.content).decode("ascii"),
+                    "content_type": "image/png",
+                    "filename":     "niebo.png",
+                }
             elif resp.status_code in (401, 403):
-                current_app.logger.warning("[flux] token %s nieważny", name)
+                current_app.logger.warning("[flux] token %s niewazny", name)
             elif resp.status_code in (503, 529):
-                current_app.logger.warning("[flux] token %s przeciążony", name)
+                current_app.logger.warning("[flux] token %s przeciazony", name)
             else:
-                current_app.logger.warning("[flux] token %s błąd %s: %s",
+                current_app.logger.warning("[flux] token %s blad %s: %s",
                                            name, resp.status_code, resp.text[:100])
         except requests.exceptions.Timeout:
             current_app.logger.warning("[flux] token %s timeout", name)
         except Exception as e:
-            current_app.logger.warning("[flux] token %s wyjątek: %s", name, str(e)[:50])
-    current_app.logger.error("[flux] Wszystkie tokeny HF zawiodły!")
+            current_app.logger.warning("[flux] token %s wyjatek: %s", name, str(e)[:50])
+    current_app.logger.error("[flux] Wszystkie tokeny HF zawiodly!")
     return None
+
+
+def _generate_multiple_flux_images(prompt: str, ilosc: int, kompresja_jpg: int, etap: int) -> list:
+    """
+    Generuje do `ilosc` obrazkow FLUX z losowym seed dla kazdego.
+    Jezeli tokeny sie wyczerpja — zwraca tyle ile udalo sie wygenerowac.
+    """
+    wyniki = []
+    for i in range(ilosc):
+        current_app.logger.info("[pawel-flux] etap=%d obrazek %d/%d", etap, i + 1, ilosc)
+        raw = _generate_flux_image(prompt)
+        if raw is None:
+            current_app.logger.warning(
+                "[pawel-flux] etap=%d obrazek %d/%d nieudany — przerywam", etap, i + 1, ilosc
+            )
+            break
+        compressed = _compress_flux_image(raw, kompresja_jpg)
+        ext = ".jpg" if kompresja_jpg > 0 else ".png"
+        compressed["filename"] = f"niebo_{etap}_{i + 1}{ext}"
+        wyniki.append(compressed)
+
+    current_app.logger.info(
+        "[pawel-flux] etap=%d wygenerowano %d/%d obrazkow", etap, len(wyniki), ilosc
+    )
+    return wyniki
 
 
 def _build_debug_txt(source_text: str, flux_prompt: str,
                      flux_provider: str, etap: int,
+                     ilosc_zamowiona: int = 1,
+                     ilosc_wygenerowana: int = 1,
                      mutation_changes: list = None) -> dict:
     changes_str = "\n".join(mutation_changes) if mutation_changes else "(brak mutacji)"
     content = (
         f"Etap: {etap}\n\n"
         f"{flux_prompt}\n\n\n"
         f"=== REQUIEM RESPONDER — DEBUG FLUX ===\n\n"
-        f"--- Źródło promptu FLUX ---\n{source_text}\n\n"
+        f"--- Obrazki zamowione/wygenerowane ---\n{ilosc_wygenerowana}/{ilosc_zamowiona}\n\n"
+        f"--- Zrodlo promptu FLUX ---\n{source_text}\n\n"
         f"--- Provider ---\n{flux_provider}\n\n"
-        f"--- Zmutowane słowa ---\n{changes_str}\n\n"
+        f"--- Zmutowane slowa ---\n{changes_str}\n\n"
         f"--- Parametry FLUX ---\n"
         f"Model: FLUX.1-schnell\n"
         f"num_inference_steps: {HF_STEPS}\n"
         f"guidance_scale: {HF_GUIDANCE}\n"
+        f"seed: losowy per obrazek\n"
         f"API URL: {HF_API_URL}\n"
     )
-    return {"base64": base64.b64encode(content.encode("utf-8")).decode("ascii"),
-            "content_type": "text/plain", "filename": "_.txt"}
+    return {
+        "base64":       base64.b64encode(content.encode("utf-8")).decode("ascii"),
+        "content_type": "text/plain",
+        "filename":     "_.txt",
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# GŁÓWNA FUNKCJA
+# GLOWNA FUNKCJA
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def build_smierc_section(
@@ -458,12 +471,9 @@ def build_smierc_section(
     **kwargs
 ) -> dict:
     """
-    Obsługuje dwa sposoby wywołania:
-      A) Z app.py — argumenty wprost:
-         build_smierc_section(sender_email=..., body=..., etap=...,
-                              data_smierci_str=..., historia=...)
-      B) Stary styl — słownik data={}:
-         build_smierc_section(sender_email=..., data={etap, data_smierci, historia})
+    Obsluguje dwa sposoby wywolania:
+      A) Z app.py — argumenty wprost
+      B) Stary styl — slownik data={}
     """
     if historia is None:
         historia = []
@@ -479,41 +489,43 @@ def build_smierc_section(
     max_etap     = max(etapy_dict.keys()) if etapy_dict else 50
     historia_txt = _format_historia(historia)
 
-    # ── WYSŁANNIK (etap > max_etap) ───────────────────────────────────────────
+    # ── WYSLANNIK (etap > max_etap) ───────────────────────────────────────────
     if etap > max_etap:
-        # System prompt Wysłannika — może być nadpisany przez styl_odpowiedzi_tekstowej
         s_row = style_dict.get(etap, {})
-        system_file    = s_row.get("styl_odpowiedzi_tekstowej", "")
+        system_file      = s_row.get("styl_odpowiedzi_tekstowej", "")
         system_wyslannik = (
             _load_style_file(system_file)
             or _load_txt(FILE_WYSLANNIK_SYSTEM, fallback=(
-                "Jesteś wysłannikiem z wyższych sfer duchowych piszącym po polsku. "
-                "Przebijasz każdą rzecz wymienioną przez nadawcę — tylko przymiotnikami, "
+                "Jestes wyslannikiem z wyzszych sfer duchowych piszacym po polsku. "
+                "Przebijasz kazda rzecz wymieniona przez nadawce — tylko przymiotnikami, "
                 "nigdy liczbami. Ton: dostojny, poetycki, absurdalny. Max 4 zdania. "
-                "Podpisz się: — Wysłannik z wyższych sfer"
+                "Podpisz sie: — Wyslannik z wyzszych sfer"
             ))
         )
         user_msg    = f"Osoba pyta: {body}\n\nHistoria:\n{historia_txt}"
         wynik_tekst = call_deepseek(system_wyslannik, user_msg, MODEL_TYLER)
         if not wynik_tekst:
-            current_app.logger.warning("[wyslannik] DeepSeek zawiódł — próbuję Groq")
+            current_app.logger.warning("[wyslannik] DeepSeek zawiodl — probuje Groq")
             wynik_tekst = _call_groq(system_wyslannik, user_msg)
 
         reply_html = (
-            f"<p>{wynik_tekst}</p><p><i>— Wysłannik z wyższych sfer</i></p>"
+            f"<p>{wynik_tekst}</p><p><i>— Wyslannik z wyzszych sfer</i></p>"
             if wynik_tekst
-            else "<p>Pawła nie ma — reinkarnował się. Jesteśmy tu do dyspozycji."
-                 "<br><i>— Wysłannik z wyższych sfer</i></p>"
+            else "<p>Pawla nie ma — reinkarnlowal sie.<br><i>— Wyslannik z wyzszych sfer</i></p>"
         )
 
-        # Styl FLUX dla Wysłannika (z pliku styl lub domyślny)
-        styl_file    = s_row.get("styl", "")
-        groq_system  = _load_style_file(styl_file)  # może być pusty → użyje domyślnego
+        styl_file   = s_row.get("styl", "")
+        groq_system = _load_style_file(styl_file)
         flux_prompt, flux_changes, flux_provider = _generate_flux_prompt(
             wynik_tekst or body, groq_system_override=groq_system
         )
         image     = _generate_flux_image(flux_prompt)
-        debug_txt = _build_debug_txt(wynik_tekst or "", flux_prompt, flux_provider, etap, flux_changes)
+        debug_txt = _build_debug_txt(
+            wynik_tekst or "", flux_prompt, flux_provider, etap,
+            ilosc_zamowiona=1,
+            ilosc_wygenerowana=1 if image else 0,
+            mutation_changes=flux_changes,
+        )
 
         current_app.logger.info("[wyslannik] etap=%d image=%s", etap, bool(image))
         return {
@@ -524,77 +536,73 @@ def build_smierc_section(
             "debug_txt":  debug_txt,
         }
 
-    # ── ETAPY 1-max_etap — Paweł ──────────────────────────────────────────────
+    # ── ETAPY 1-max_etap — Pawel ──────────────────────────────────────────────
     row   = etapy_dict.get(etap, {})
     s_row = style_dict.get(etap, {})
 
     if not row:
         current_app.logger.warning("[smierc] Brak etapu %d w xlsx — tryb awaryjny", etap)
-        opis               = "Błądzenie w antymaterii"
-        obraz_filename     = ""
-        video_filename     = ""
-        obrazki_ai         = 1
+        opis              = "Bladzenie w antymaterii"
+        obraz_filename    = ""
+        video_filename    = ""
+        ilosc_obrazkow_ai = 1
+        kompresja_jpg     = 0
         system_prompt_tmpl = DEFAULT_SYSTEM_PROMPT
     else:
-        opis           = row.get("opis",  "")
-        obraz_filename = row.get("obraz", "")
-        video_filename = row.get("video", "")
-        obrazki_ai     = _parse_obrazki_ai(row.get("obrazki_ai", "0"))
+        opis              = row.get("opis",  "")
+        obraz_filename    = row.get("obraz", "")
+        video_filename    = row.get("video", "")
+        ilosc_obrazkow_ai = _parse_int_col(row.get("ilosc_obrazkow_ai", "0"), default=0)
+        kompresja_jpg     = _parse_int_col(row.get("kompresja_jpg",     "0"), default=0)
 
-        # styl_odpowiedzi_tekstowej z zakładki style nadpisuje system_prompt z zakładki etapy
         system_file        = s_row.get("styl_odpowiedzi_tekstowej", "")
-        system_prompt_tmpl = (
-            _load_style_file(system_file)
-            or row.get("system_prompt")
-            or DEFAULT_SYSTEM_PROMPT
-        )
+        system_prompt_tmpl = _load_style_file(system_file) or DEFAULT_SYSTEM_PROMPT
 
     system   = system_prompt_tmpl.replace("{data_smierci_str}", data_smierci_str)
-    user_msg = f"Etap w zaświatach: {opis}\nWiadomość: {body}\nHistoria:\n{historia_txt}"
+    user_msg = f"Etap w zaswiatach: {opis}\nWiadomosc: {body}\nHistoria:\n{historia_txt}"
     wynik    = call_deepseek(system, user_msg, MODEL_TYLER)
     reply_html = (
         f"<p>{wynik}</p>" if wynik
-        else "<p>To autoresponder. Chwilowo brak zasięgu w tej strefie kosmicznej.</p>"
+        else "<p>To autoresponder. Chwilowo brak zasiegu w tej strefie kosmicznej.</p>"
     )
 
-    # Obrazek statyczny (zawsze, jeśli plik istnieje)
+    # Obrazek statyczny (zawsze, jesli plik istnieje)
     static_image = _get_etap_image(etap, obraz_filename)
 
-    # Obrazek FLUX:
-    #   0 lub brak -> nic nie generuj
-    #   1          -> PNG bez kompresji
-    #   2          -> JPG 90%
-    #   3-5        -> JPG 60%
-    #   6+         -> JPG 50%
-    flux_image = None
-    debug_txt  = None
-    if obrazki_ai > 0:
+    # Obrazki FLUX — N roznych wariacji dzieki losowemu seed
+    flux_images = []
+    debug_txt   = None
+    if ilosc_obrazkow_ai > 0:
         current_app.logger.info(
-            "[pawel-flux] etap=%d obrazki_ai=%d — generuję FLUX", etap, obrazki_ai
+            "[pawel-flux] etap=%d ilosc=%d kompresja=%d%% — generuje FLUX",
+            etap, ilosc_obrazkow_ai, kompresja_jpg
         )
         styl_file    = s_row.get("styl", "")
         styl_content = _load_style_file(styl_file)
         flux_prompt, flux_changes, flux_provider = _generate_flux_prompt(
             styl_content or wynik or opis
         )
-        current_app.logger.info("[pawel-flux] prompt=%.120s provider=%s", flux_prompt, flux_provider)
-        raw_flux   = _generate_flux_image(flux_prompt)
-        flux_image = _compress_flux_image(raw_flux, obrazki_ai) if raw_flux else None
-        debug_txt  = _build_debug_txt(wynik or "", flux_prompt, flux_provider, etap, flux_changes)
         current_app.logger.info(
-            "[pawel-flux] etap=%d flux_image=%s format=%s",
-            etap, bool(flux_image),
-            flux_image.get("content_type", "?") if flux_image else "—"
+            "[pawel-flux] prompt=%.120s provider=%s", flux_prompt, flux_provider
+        )
+        flux_images = _generate_multiple_flux_images(
+            flux_prompt, ilosc_obrazkow_ai, kompresja_jpg, etap
+        )
+        debug_txt = _build_debug_txt(
+            wynik or "", flux_prompt, flux_provider, etap,
+            ilosc_zamowiona=ilosc_obrazkow_ai,
+            ilosc_wygenerowana=len(flux_images),
+            mutation_changes=flux_changes,
         )
 
-    # Lista obrazków: statyczny PNG pierwszy, FLUX (PNG lub JPG) drugi
-    images = [img for img in [static_image, flux_image] if img]
+    # Lista obrazkow: statyczny PNG pierwszy, potem FLUX
+    images = [img for img in [static_image] + flux_images if img]
 
     mp4 = _get_etap_video(etap, video_filename)
 
     current_app.logger.info(
-        "[smierc] Etap %d: images=%d mp4=%s debug_txt=%s",
-        etap, len(images), bool(mp4), bool(debug_txt)
+        "[smierc] Etap %d: images=%d (flux=%d/%d) mp4=%s debug_txt=%s",
+        etap, len(images), len(flux_images), ilosc_obrazkow_ai, bool(mp4), bool(debug_txt)
     )
     return {
         "reply_html": reply_html,
