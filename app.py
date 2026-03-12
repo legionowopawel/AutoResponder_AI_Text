@@ -13,6 +13,20 @@ Respondery:
     * Wymaga dodatkowych pól: etap, data_smierci, historia
     * Generuje odpowiedzi z zaświatów z progressją etapów
     * Etap 8+: Wysłannik generujący obrazki FLUX
+    
+    ZWRACA:
+      {
+        "reply_html": string,
+        "nowy_etap": int,
+        "images": [{"base64": ..., "content_type": "image/png", "filename": "..."}],
+        "videos": [...],
+        "debug_txt": {"base64": ..., "content_type": "text/plain", "filename": "_.txt"}
+      }
+
+WAŻNE: W Google Apps Script (executeSmircMailSend) MUSISZ dodać:
+  attachments.push(imgBlob);  // Bez tego obrazki się nie wyświetlą!
+
+Więcej: Zobacz komentarz po stronie 33 tego pliku.
 """
 import os
 import base64
@@ -32,6 +46,26 @@ from responders.generator_pdf import build_generator_pdf_section
 from responders.smierc        import build_smierc_section
 
 app = Flask(__name__)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ⚠️  WAŻNE: Zmiana wymagana w Google Apps Script (app.gs)
+# 
+# W funkcji executeSmircMailSend() (~linia 556-580) MUSISZ DODAĆ:
+#
+#     if (imgObj.base64) {
+#       var cid = "smirc_img_" + index;
+#       var imgBlob = Utilities.newBlob(
+#         Utilities.base64Decode(imgObj.base64),
+#         imgObj.content_type || "image/png",
+#         imgObj.filename || ("obraz_" + index + ".png")
+#       );
+#       inlineImages[cid] = imgBlob;
+#       attachments.push(imgBlob);  ← ✅ DODAJ TĘ LINIĘ!
+#       imagesHtml += '<p><img src="cid:' + cid + ...
+#     }
+#
+# Bez tego obrazki FLUX nie będą się wyświetlać w Gmailu!
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 def _run_parallel(tasks: dict, flask_app) -> dict:
@@ -141,9 +175,13 @@ def webhook():
         }
 
     # ── Logowanie ─────────────────────────────────────────────────────────────
+    smierc_data = response_data.get("smierc", {})
+    smierc_images_count = len(smierc_data.get("images", [])) if isinstance(smierc_data.get("images"), list) else 0
+    smierc_has_debug = bool(smierc_data.get("debug_txt", {}).get("base64"))
+    
     app.logger.info(
         "Response: biznes=%s | zwykly=%s | scrabble=%s | analiza=%s | emocje=%s "
-        "| obrazek=%s | nawiazanie=%s | generator_pdf=%s | smierc=%s | sender=%s",
+        "| obrazek=%s | nawiazanie=%s | generator_pdf=%s | smierc=%s (images=%d, debug=%s) | sender=%s",
         bool(response_data.get("biznes",    {}).get("pdf",  {}).get("base64")),
         bool(response_data.get("zwykly",    {}).get("pdf",  {}).get("base64")),
         "tak" if "scrabble"       in response_data else "nie",
@@ -153,6 +191,8 @@ def webhook():
         "tak" if response_data.get("nawiazanie", {}).get("has_history") else "nie",
         "tak" if response_data.get("generator_pdf", {}).get("pdf") else "nie",
         "tak" if "smierc"         in response_data else "nie",
+        smierc_images_count,
+        "tak" if smierc_has_debug else "nie",
         sender_name or sender or "(brak)",
     )
 
