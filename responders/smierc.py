@@ -155,13 +155,34 @@ def _get_etap_image(etap: int, filename: str = ""):
     return None
 
 
-def _get_etap_mp4(etap: int, filename: str = ""):
+# Mapowanie rozszerzeń plików wideo na content-type
+_VIDEO_MIME = {
+    ".mp4":  "video/mp4",
+    ".webm": "video/webm",
+    ".avi":  "video/x-msvideo",
+    ".mov":  "video/quicktime",
+    ".mkv":  "video/x-matroska",
+    ".ogv":  "video/ogg",
+    ".3gp":  "video/3gpp",
+    ".flv":  "video/x-flv",
+    ".wmv":  "video/x-ms-wmv",
+}
+
+def _get_video_mime(filename: str) -> str:
+    ext = os.path.splitext(filename.lower())[1]
+    return _VIDEO_MIME.get(ext, "video/mp4")
+
+
+def _get_etap_video(etap: int, filename: str = ""):
+    """Wczytuje plik wideo dla etapu. Obsługuje dowolny format."""
     name = filename.strip() if filename.strip() else f"{etap}.mp4"
     path = os.path.join(MEDIA_DIR, "mp4", "niebo", name)
     b64  = _file_to_base64(path)
     if b64:
-        current_app.logger.info("MP4 etapu %d OK (%s)", etap, name)
-        return {"base64": b64, "content_type": "video/mp4", "filename": name}
+        mime = _get_video_mime(name)
+        current_app.logger.info("Wideo etapu %d OK (%s, %s)", etap, name, mime)
+        return {"base64": b64, "content_type": mime, "filename": name}
+    current_app.logger.warning("Brak wideo etapu %d: %s", etap, path)
     return None
 
 
@@ -181,6 +202,50 @@ def _parse_obrazki_ai(val) -> int:
         return int(float(s)) if s not in ("", "nan") else 0
     except (ValueError, TypeError):
         return 0
+
+
+def _compress_flux_image(image_obj: dict, obrazki_ai: int) -> dict:
+    """
+    Kompresuje obrazek FLUX do JPG w zależności od wartości obrazki_ai:
+      1     -> PNG bez kompresji (zwraca oryginał)
+      2     -> JPG, jakość 90%
+      3-5   -> JPG, jakość 60%
+      6+    -> JPG, jakość 50%
+    """
+    if obrazki_ai <= 1:
+        return image_obj  # PNG, bez zmian
+
+    if obrazki_ai == 2:
+        quality = 90
+    elif obrazki_ai <= 5:
+        quality = 60
+    else:
+        quality = 50
+
+    try:
+        from PIL import Image
+        import io
+
+        raw = base64.b64decode(image_obj["base64"])
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+        compressed_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+
+        original_kb   = len(raw) // 1024
+        compressed_kb = len(buf.getvalue()) // 1024
+        current_app.logger.info(
+            "[flux-compress] obrazki_ai=%d quality=%d%% %dKB -> %dKB",
+            obrazki_ai, quality, original_kb, compressed_kb
+        )
+        return {
+            "base64":       compressed_b64,
+            "content_type": "image/jpeg",
+            "filename":     image_obj.get("filename", "niebo.png").replace(".png", ".jpg"),
+        }
+    except Exception as e:
+        current_app.logger.warning("[flux-compress] Blad kompresji: %s — zwracam oryginal", e)
+        return image_obj
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -450,38 +515,49 @@ def build_smierc_section(
         else "<p>To autoresponder. Chwilowo brak zasięgu w tej strefie kosmicznej.</p>"
     )
 
-    # Obrazek: statyczny PNG → fallback FLUX
+    # Obrazek statyczny (zawsze, jeśli plik istnieje)
     static_image = _get_etap_image(etap, obraz_filename)
-    if static_image:
-        image     = static_image
-        debug_txt = None
-    elif obrazki_ai > 0:
-        current_app.logger.info("[pawel-flux] etap=%d — brak PNG, generuję FLUX", etap)
-        # styl FLUX: z pliku wskazanego przez kolumnę styl
-        styl_file   = s_row.get("styl", "")
+
+    # Obrazek FLUX:
+    #   0 lub brak -> nic nie generuj
+    #   1          -> PNG bez kompresji
+    #   2          -> JPG 90%
+    #   3-5        -> JPG 60%
+    #   6+         -> JPG 50%
+    flux_image = None
+    debug_txt  = None
+    if obrazki_ai > 0:
+        current_app.logger.info(
+            "[pawel-flux] etap=%d obrazki_ai=%d — generuję FLUX", etap, obrazki_ai
+        )
+        styl_file    = s_row.get("styl", "")
         styl_content = _load_style_file(styl_file)
-        # groq_system_override: plik styl (jeśli wczytany) lub pusty → domyślny
         flux_prompt, flux_changes, flux_provider = _generate_flux_prompt(
             styl_content or wynik or opis
         )
         current_app.logger.info("[pawel-flux] prompt=%.120s provider=%s", flux_prompt, flux_provider)
-        image     = _generate_flux_image(flux_prompt)
-        debug_txt = _build_debug_txt(wynik or "", flux_prompt, flux_provider, etap, flux_changes)
-        current_app.logger.info("[pawel-flux] etap=%d image=%s", etap, bool(image))
-    else:
-        image     = None
-        debug_txt = None
+        raw_flux   = _generate_flux_image(flux_prompt)
+        flux_image = _compress_flux_image(raw_flux, obrazki_ai) if raw_flux else None
+        debug_txt  = _build_debug_txt(wynik or "", flux_prompt, flux_provider, etap, flux_changes)
+        current_app.logger.info(
+            "[pawel-flux] etap=%d flux_image=%s format=%s",
+            etap, bool(flux_image),
+            flux_image.get("content_type", "?") if flux_image else "—"
+        )
 
-    mp4 = _get_etap_mp4(etap, video_filename)
+    # Lista obrazków: statyczny PNG pierwszy, FLUX (PNG lub JPG) drugi
+    images = [img for img in [static_image, flux_image] if img]
+
+    mp4 = _get_etap_video(etap, video_filename)
 
     current_app.logger.info(
-        "[smierc] Etap %d: image=%s mp4=%s debug_txt=%s",
-        etap, bool(image), bool(mp4), bool(debug_txt)
+        "[smierc] Etap %d: images=%d mp4=%s debug_txt=%s",
+        etap, len(images), bool(mp4), bool(debug_txt)
     )
     return {
         "reply_html": reply_html,
         "nowy_etap":  etap + 1,
-        "images":     [image] if image else [],
-        "videos":     [mp4]   if mp4   else [],
+        "images":     images,
+        "videos":     [mp4] if mp4 else [],
         "debug_txt":  debug_txt,
     }
