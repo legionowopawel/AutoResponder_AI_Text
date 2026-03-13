@@ -176,8 +176,9 @@ def webhook():
 
     # ── Logowanie ─────────────────────────────────────────────────────────────
     smierc_data = response_data.get("smierc", {})
-    smierc_images_count = len(smierc_data.get("images", [])) if isinstance(smierc_data.get("images"), list) else 0
-    smierc_has_debug = bool(smierc_data.get("debug_txt", {}).get("base64"))
+    smierc_images_count = len(smierc_data.get("images", [])) if isinstance(smierc_data, dict) and isinstance(smierc_data.get("images"), list) else 0
+    debug_txt = smierc_data.get("debug_txt", {}) if isinstance(smierc_data, dict) else {}
+    smierc_has_debug = bool(debug_txt.get("base64") if isinstance(debug_txt, dict) else False)
     
     app.logger.info(
         "Response: biznes=%s | zwykly=%s | scrabble=%s | analiza=%s | emocje=%s "
