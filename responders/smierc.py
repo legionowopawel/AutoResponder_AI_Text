@@ -413,7 +413,7 @@ def _generate_flux_prompt(source_text: str, groq_system_override: str = "") -> t
         current_app.logger.info("[flux] Mutacje: %s", ", ".join(changes))
 
     provider = "groq" if groq_system_override == "" else "custom"
-    return mutated_prompt, changes, provider
+    return mutated_prompt, changes, provider, prompt
 
 
 def _get_hf_tokens() -> list:
@@ -594,6 +594,7 @@ def _build_debug_txt(
         body_text: str = "",
         system_prompt: str = "",
         groq_response: str = "",
+        flux_prompt_raw: str = "",
         image_details: list = None,
 ) -> dict:
     """
@@ -669,7 +670,10 @@ def _build_debug_txt(
     lines.append(f"FLUX Model: FLUX.1-schnell")
     lines.append(f"Max tokens: bez limitu")
     lines.append("")
-    lines.append(f"Prompt ({len(flux_prompt)} znaków):")
+    lines.append("--- PROMPT PRZED MUTACJĄ ---")
+    lines.append(flux_prompt_raw or "(brak)")
+    lines.append("")
+    lines.append(f"--- PROMPT PO MUTACJI ({len(flux_prompt)} znaków) — wysłany do FLUX ---")
     lines.append(flux_prompt)
     lines.append("")
 
@@ -796,7 +800,7 @@ def build_smierc_section(
         styl_file = s_row.get("styl", "")
         groq_system = _load_style_file(styl_file)
         source_with_date = f"{wynik_tekst or body}\n\n[Pawel umarl dnia: {data_smierci_str}]"
-        flux_prompt, flux_changes, flux_provider = _generate_flux_prompt(
+        flux_prompt, flux_changes, flux_provider, flux_prompt_raw = _generate_flux_prompt(
             source_with_date, groq_system_override=groq_system
         )
         image_result = _generate_flux_image(flux_prompt, etap=etap, return_token_info=True)
@@ -836,6 +840,7 @@ def build_smierc_section(
             body_text=body,
             system_prompt=system_wyslannik,
             groq_response=wynik_tekst or "",
+            flux_prompt_raw=flux_prompt_raw,
             image_details=image_details,
         )
 
@@ -910,7 +915,7 @@ def build_smierc_section(
         styl_file = s_row.get("styl", "")
         groq_system = _load_style_file(styl_file)
         source_with_date = f"{wynik or opis}\n\n[Pawel umarl dnia: {data_smierci_str}]"
-        flux_prompt, flux_changes, flux_provider = _generate_flux_prompt(
+        flux_prompt, flux_changes, flux_provider, flux_prompt_raw = _generate_flux_prompt(
             source_with_date, groq_system_override=groq_system
         )
         current_app.logger.info(
@@ -955,6 +960,7 @@ def build_smierc_section(
             body_text=body,
             system_prompt=system,
             groq_response=wynik or "",
+            flux_prompt_raw=flux_prompt_raw,
             image_details=image_details,
         )
 
