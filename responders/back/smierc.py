@@ -293,20 +293,11 @@ def _compress_flux_image(image_obj: dict, kompresja_jpg: int) -> dict:
             "[flux-compress] kompresja=%d%% %dKB -> %dKB",
             quality, len(raw) // 1024, len(buf.getvalue()) // 1024
         )
-        
-        result = {
+        return {
             "base64":       compressed_b64,
             "content_type": "image/jpeg",
             "filename":     image_obj.get("filename", "niebo.png").replace(".png", ".jpg"),
-            "size_jpg":     f"{len(buf.getvalue()) / 1024:.0f}KB",
         }
-        
-        # Skopiuj metadata z oryginalnego image_obj
-        for key in ["seed", "token_name", "remaining_requests", "size_png"]:
-            if key in image_obj:
-                result[key] = image_obj[key]
-        
-        return result
     except Exception as e:
         current_app.logger.warning("[flux-compress] Blad kompresji: %s — zwracam oryginal", e)
         return image_obj
@@ -380,8 +371,7 @@ def _call_groq_flux(system: str, user: str) -> str | None:
         "model": GROQ_MODEL,
         "messages": [{"role": "system", "content": system},
                      {"role": "user",   "content": user}],
-        "max_tokens": 2000,
-        "temperature": 0.95,
+        "max_tokens": 150, "temperature": 0.95,
     }
     try:
         resp = requests.post(GROQ_API_URL, headers=headers, json=payload, timeout=30)
@@ -404,8 +394,8 @@ def _generate_flux_prompt(source_text: str, groq_system_override: str = "") -> t
     ))
     prompt = _call_groq_flux(groq_system, source_text)
     if not prompt:
-        current_app.logger.warning("[flux] Groq zawiodl — uzywam tekst wprost (1000 znaków)")
-        prompt = source_text[:1000]
+        current_app.logger.warning("[flux] Groq zawiodl — uzywam tekst wprost")
+        prompt = source_text[:150]
     
     mutated_prompt, changes = _mutate_flux_prompt(prompt)
     if changes:
@@ -492,10 +482,6 @@ def _generate_flux_image(prompt: str, etap: int = 0, return_token_info: bool = F
                     "base64":       base64.b64encode(resp.content).decode("ascii"),
                     "content_type": "image/png",
                     "filename":     f"niebo_etap{etap}_seed{seed}.png",
-                    "seed":         seed,
-                    "token_name":   name,
-                    "remaining_requests": int(remaining) if remaining else None,
-                    "size_png":     f"{len(resp.content) / 1024 / 1024:.1f}MB",
                 }
                 
                 # Dodaj info o tokenach jeśli jest tego wiele (dla debug)
@@ -587,131 +573,28 @@ def _build_debug_txt(
     etap: int,
     ilosc_zamowiona: int = 0,
     ilosc_wygenerowana: int = 0,
-    kompresja_jpg: int = 0,
     mutation_changes: list = None,
     token_info = None,
-    body_text: str = "",
-    system_prompt: str = "",
-    groq_response: str = "",
-    image_details: list = None,
 ) -> dict:
-    """
-    Buduje szczegółowy debug info jako plain text — dla każdego obrazka.
-    Wypisuje PEŁNĄ logikę działania programu.
-    """
+    """Buduje debug info jako plain text."""
     if mutation_changes is None:
         mutation_changes = []
-    if image_details is None:
-        image_details = []
     
-    lines = []
+    lines = [
+        f"=== DEBUG {datetime.now().isoformat()} ===",
+        f"Etap: {etap}",
+        f"Obrazki: {ilosc_wygenerowana}/{ilosc_zamowiona}",
+        f"FLUX prompt: {flux_prompt[:200]}",
+        f"FLUX provider: {flux_provider}",
+    ]
     
-    # ═══ NAGŁÓWEK ═══
-    lines.append("=" * 88)
-    lines.append(f"=== DEBUG {datetime.now().isoformat()} ===")
-    lines.append("=" * 88)
-    lines.append(f"ETAP: {etap}")
-    lines.append(f"OBRAZKI: {ilosc_wygenerowana}/{ilosc_zamowiona}")
-    lines.append(f"KOMPRESJA JPG: {kompresja_jpg}%")
-    lines.append("")
-    
-    # ═══ [1] WIADOMOŚĆ OD UŻYTKOWNIKA ═══
-    lines.append("=" * 88)
-    lines.append("[1] WIADOMOŚĆ OD UŻYTKOWNIKA")
-    lines.append("=" * 88)
-    if body_text:
-        lines.append("Script otrzymał z emaila:")
-        lines.append(f'"{body_text}"')
-    else:
-        lines.append("(brak tekstu wejściowego)")
-    lines.append("")
-    
-    # ═══ [2] SYSTEM PROMPT DLA GROQ ═══
-    lines.append("=" * 88)
-    lines.append("[2] SYSTEM PROMPT DLA GROQ")
-    lines.append("=" * 88)
-    if system_prompt:
-        lines.append(system_prompt)
-    else:
-        lines.append("(brak system promptu)")
-    lines.append("")
-    
-    # ═══ [3] ODPOWIEDŹ OD GROQ ═══
-    lines.append("=" * 88)
-    lines.append("[3] ODPOWIEDŹ OD GROQ")
-    lines.append("=" * 88)
-    if groq_response:
-        lines.append(f"Groq odpowiedział ({len(groq_response)} znaków):")
-        lines.append(groq_response)
-    else:
-        lines.append("(brak odpowiedzi od Groq)")
-    lines.append("")
-    
-    # ═══ [4] MUTACJA SŁÓW ZAKAZANYCH ═══
-    lines.append("=" * 88)
-    lines.append("[4] MUTACJA SŁÓW ZAKAZANYCH (flux_forbidden.txt)")
-    lines.append("=" * 88)
     if mutation_changes:
-        lines.append(f"Razem zmutowano słów: {len(mutation_changes)}")
-        lines.append("")
-        for i, change in enumerate(mutation_changes, 1):
-            lines.append(f"  {i}. {change}")
-    else:
-        lines.append("Nie znaleziono słów do mutacji.")
-    lines.append("")
+        lines.append(f"Mutacje: {', '.join(mutation_changes)}")
     
-    # ═══ [5] FINALNA ZAWARTOŚĆ WYSŁANA DO FLUX ═══
-    lines.append("=" * 88)
-    lines.append("[5] FINALNA ZAWARTOŚĆ WYSŁANA DO FLUX")
-    lines.append("=" * 88)
-    lines.append(f"FLUX Provider: {flux_provider.upper()}")
-    lines.append(f"FLUX Model: FLUX.1-schnell")
-    lines.append(f"Max tokens: bez limitu")
-    lines.append("")
-    lines.append(f"Prompt ({len(flux_prompt)} znaków):")
-    lines.append(flux_prompt)
-    lines.append("")
-    
-    # ═══ [6] GENEROWANIE OBRAZKÓW — SZCZEGÓŁY ═══
-    lines.append("=" * 88)
-    lines.append("[6] GENEROWANIE OBRAZKÓW — SZCZEGÓŁY")
-    lines.append("=" * 88)
-    if image_details:
-        for i, img in enumerate(image_details, 1):
-            lines.append("")
-            lines.append("-" * 88)
-            lines.append(f"OBRAZEK {i}/{ilosc_zamowiona}")
-            lines.append("-" * 88)
-            lines.append(f"Seed: {img.get('seed', 'N/A')}")
-            lines.append(f"Token HF: {img.get('token_name', 'N/A')}")
-            lines.append(f"Status: {img.get('status', 'N/A')}")
-            if img.get('http_code'):
-                lines.append(f"HTTP Code: {img.get('http_code')}")
-            if img.get('size_png'):
-                lines.append(f"Rozmiar PNG: {img.get('size_png')}")
-            if img.get('size_jpg'):
-                lines.append(f"Rozmiar JPG ({kompresja_jpg}%): {img.get('size_jpg')}")
-            lines.append(f"Filename: {img.get('filename', 'N/A')}")
-            if img.get('remaining_requests') is not None:
-                lines.append(f"X-Remaining-Requests: {img.get('remaining_requests')}")
-            if img.get('error'):
-                lines.append(f"Error: {img.get('error')}")
-    else:
-        lines.append("(brak szczegółów obrazków)")
-    lines.append("")
-    
-    # ═══ [7] PODSUMOWANIE ═══
-    lines.append("=" * 88)
-    lines.append("[7] PODSUMOWANIE")
-    lines.append("=" * 88)
-    lines.append(f"Łącznie obrazków: {ilosc_wygenerowana}/{ilosc_zamowiona}")
     if token_info:
-        lines.append(f"Tokeny HF: {token_info}")
-    lines.append("")
+        lines.append(f"Token info: {token_info}")
     
-    lines.append("=" * 88)
-    lines.append("KONIEC DEBUG")
-    lines.append("=" * 88)
+    lines.append(f"\nReply tekst:\n{reply_text[:500]}")
     
     content = "\n".join(lines)
     b64 = base64.b64encode(content.encode("utf-8")).decode("ascii")
@@ -810,32 +693,12 @@ def build_smierc_section(
             elif "token_attempts" in image_result:
                 token_info = image_result.get("token_attempts")
         
-        # Przygotuj szczegóły obrazka
-        image_details = []
-        token_info_str = "N/A"
-        if image:
-            image_details.append({
-                "seed": image.get("seed"),
-                "token_name": image.get("token_name"),
-                "status": "SUCCESS",
-                "size_png": image.get("size_png"),
-                "size_jpg": image.get("size_jpg"),
-                "filename": image.get("filename"),
-                "remaining_requests": image.get("remaining_requests"),
-            })
-            token_info_str = image.get("token_name", "N/A")
-        
         debug_txt = _build_debug_txt(
             wynik_tekst or "", flux_prompt, flux_provider, etap,
             ilosc_zamowiona=1,
             ilosc_wygenerowana=1 if image else 0,
-            kompresja_jpg=0,
             mutation_changes=flux_changes,
-            token_info=token_info_str,
-            body_text=body,
-            system_prompt=system_wyslannik,
-            groq_response=wynik_tekst or "",
-            image_details=image_details,
+            token_info=token_info,
         )
 
         current_app.logger.info("[wyslannik] etap=%d image=%s tokens=%s", 
@@ -919,41 +782,16 @@ def build_smierc_section(
             flux_prompt, ilosc_obrazkow_ai, kompresja_jpg, etap
         )
         
-        # Wyciągnij token_info z pierwszego obrazka i szczegóły wszystkich
-        image_details = []
-        token_summary = {}
-        for i, img in enumerate(flux_images, 1):
-            if isinstance(img, dict):
-                img_detail = {
-                    "seed": img.get("seed"),
-                    "token_name": img.get("token_name"),
-                    "status": "SUCCESS" if "base64" in img else "FAILED",
-                    "size_png": img.get("size_png"),
-                    "size_jpg": img.get("size_jpg"),
-                    "filename": img.get("filename"),
-                    "remaining_requests": img.get("remaining_requests"),
-                }
-                image_details.append(img_detail)
-                
-                # Zlicz tokeny
-                token_name = img.get("token_name", "unknown")
-                if token_name not in token_summary:
-                    token_summary[token_name] = 0
-                token_summary[token_name] += 1
-        
-        token_info_str = ", ".join([f"{k}: {v} obrazków" for k, v in sorted(token_summary.items())]) if token_summary else "N/A"
+        # Wyciągnij token_info z pierwszego obrazka
+        if flux_images and isinstance(flux_images[0], dict):
+            token_info = flux_images[0].get("token_info")
         
         debug_txt = _build_debug_txt(
             wynik or "", flux_prompt, flux_provider, etap,
             ilosc_zamowiona=ilosc_obrazkow_ai,
             ilosc_wygenerowana=len(flux_images),
-            kompresja_jpg=kompresja_jpg,
             mutation_changes=flux_changes,
-            token_info=token_info_str,
-            body_text=body,
-            system_prompt=system,
-            groq_response=wynik or "",
-            image_details=image_details,
+            token_info=token_info,
         )
 
     # Lista obrazkow: statyczny PNG pierwszy, potem FLUX
