@@ -41,31 +41,31 @@ from flask import current_app
 
 from core.ai_client import call_deepseek, MODEL_TYLER
 
-BASE_DIR    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROMPTS_DIR = os.path.join(BASE_DIR, "prompts")
-MEDIA_DIR   = os.path.join(BASE_DIR, "media")
+MEDIA_DIR = os.path.join(BASE_DIR, "media")
 
 XLSX_PATH = os.path.join(PROMPTS_DIR, "requiem_etapy.xlsx")
 
-FILE_WYSLANNIK_SYSTEM        = os.path.join(PROMPTS_DIR, "requiem_WYSLANNIK_system_8_.txt")
+FILE_WYSLANNIK_SYSTEM = os.path.join(PROMPTS_DIR, "requiem_WYSLANNIK_system_8_.txt")
 FILE_WYSLANNIK_FLUX_GROQ_SYS = os.path.join(PROMPTS_DIR, "requiem_WYSLANNIK_flux_groq_system.txt")
-FILE_WYSLANNIK_IMAGE_STYLE   = os.path.join(PROMPTS_DIR, "requiem_WYSLANNIK_IMAGE_STYLE.txt")
-FILE_FLUX_FORBIDDEN          = os.path.join(PROMPTS_DIR, "flux_forbidden.txt")
-FILE_FLUX_MUTATIONS          = os.path.join(PROMPTS_DIR, "flux_mutations.txt")
+FILE_WYSLANNIK_IMAGE_STYLE = os.path.join(PROMPTS_DIR, "requiem_WYSLANNIK_IMAGE_STYLE.txt")
+FILE_FLUX_FORBIDDEN = os.path.join(PROMPTS_DIR, "flux_forbidden.txt")
+FILE_FLUX_MUTATIONS = os.path.join(PROMPTS_DIR, "flux_mutations.txt")
 
-HF_API_URL  = "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell"
-HF_STEPS    = 1
+HF_API_URL = "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell"
+HF_STEPS = 1
 HF_GUIDANCE = 1
 TIMEOUT_SEC = 55
 
-GROQ_MODEL   = "llama-3.3-70b-versatile"
+GROQ_MODEL = "llama-3.3-70b-versatile"
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 DEFAULT_SYSTEM_PROMPT = (
-    "Jestes Pawlem — zmarlym mezczyzna piszacym z zaswiatow. "
+    "Byłeś człowiekiem, teraz jesteś duszą piszacą z zaswiatow. "
     "Piszesz po polsku. Ton: spokojny, lekko absurdalny, z humorem. "
-    "Odpowiedz maksymalnie 5 zdan. Podpisz sie: — Autoresponder Pawla-zza-swiatow. "
-    "Wspomnij ze umarles na suchoty dnia {data_smierci_str}. "
+    "Odpowiedz maksymalnie 50 zdan. Podpisz sie: — Autoresponder Pawla-zza-swiatow. "
+    "Wspomnij ze umarles dnia {data_smierci_str}. i wymyśl absurdalną chorobę i powód śmierci gdzie powodem było własne niedopatrzenie lub pomyłka i to śmierć jak w serialu śmierć na 1000 sposóbów"
     "ZAKAZ uzywania emoji, emotikon i symboli specjalnych — tylko zwykly tekst."
 )
 
@@ -129,11 +129,11 @@ def _load_config_xlsx():
                     vals = row.tolist()
                     etap_nr = int(float(str(vals[0])))
                     etapy_data[etap_nr] = {
-                        "etap":              str(vals[0]),
-                        "opis":              str(vals[1]) if len(vals) > 1 else "",
-                        "obraz":             str(vals[2]) if len(vals) > 2 else "",
-                        "video":             str(vals[3]) if len(vals) > 3 else "",
-                        "kompresja_jpg":     str(vals[4]) if len(vals) > 4 else "0",
+                        "etap": str(vals[0]),
+                        "opis": str(vals[1]) if len(vals) > 1 else "",
+                        "obraz": str(vals[2]) if len(vals) > 2 else "",
+                        "video": str(vals[3]) if len(vals) > 3 else "",
+                        "kompresja_jpg": str(vals[4]) if len(vals) > 4 else "0",
                         "ilosc_obrazkow_ai": str(vals[5]) if len(vals) > 5 else "0",
                     }
                 except (ValueError, KeyError, IndexError):
@@ -204,7 +204,7 @@ def _file_to_base64(path: str):
 def _get_etap_image(etap: int, filename: str = ""):
     name = filename.strip() if filename.strip() else f"{etap}.png"
     path = os.path.join(MEDIA_DIR, "images", "niebo", name)
-    b64  = _file_to_base64(path)
+    b64 = _file_to_base64(path)
     if b64:
         current_app.logger.info("Obrazek etapu %d OK (%s)", etap, name)
         return {"base64": b64, "content_type": "image/png", "filename": name}
@@ -213,31 +213,32 @@ def _get_etap_image(etap: int, filename: str = ""):
 
 
 _ATTACHMENT_MIME = {
-    ".mp4":  "video/mp4",
+    ".mp4": "video/mp4",
     ".webm": "video/webm",
-    ".avi":  "video/x-msvideo",
-    ".mov":  "video/quicktime",
-    ".mkv":  "video/x-matroska",
-    ".ogv":  "video/ogg",
-    ".3gp":  "video/3gpp",
-    ".flv":  "video/x-flv",
-    ".wmv":  "video/x-ms-wmv",
-    ".pdf":  "application/pdf",
+    ".avi": "video/x-msvideo",
+    ".mov": "video/quicktime",
+    ".mkv": "video/x-matroska",
+    ".ogv": "video/ogg",
+    ".3gp": "video/3gpp",
+    ".flv": "video/x-flv",
+    ".wmv": "video/x-ms-wmv",
+    ".pdf": "application/pdf",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ".doc":  "application/msword",
+    ".doc": "application/msword",
     ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    ".txt":  "text/plain",
-    ".csv":  "text/csv",
-    ".jpg":  "image/jpeg",
+    ".txt": "text/plain",
+    ".csv": "text/csv",
+    ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
-    ".png":  "image/png",
-    ".gif":  "image/gif",
+    ".png": "image/png",
+    ".gif": "image/gif",
     ".webp": "image/webp",
-    ".mp3":  "audio/mpeg",
-    ".ogg":  "audio/ogg",
-    ".wav":  "audio/wav",
+    ".mp3": "audio/mpeg",
+    ".ogg": "audio/ogg",
+    ".wav": "audio/wav",
 }
+
 
 def _get_attachment_mime(filename: str) -> str:
     ext = os.path.splitext(filename.lower())[1]
@@ -249,7 +250,7 @@ def _get_etap_video(etap: int, filename: str = ""):
         return None
     name = filename.strip()
     path = os.path.join(MEDIA_DIR, "mp4", "niebo", name)
-    b64  = _file_to_base64(path)
+    b64 = _file_to_base64(path)
     if b64:
         mime = _get_attachment_mime(name)
         current_app.logger.info("Zalacznik video etapu %d OK (%s, %s)", etap, name, mime)
@@ -293,19 +294,19 @@ def _compress_flux_image(image_obj: dict, kompresja_jpg: int) -> dict:
             "[flux-compress] kompresja=%d%% %dKB -> %dKB",
             quality, len(raw) // 1024, len(buf.getvalue()) // 1024
         )
-        
+
         result = {
-            "base64":       compressed_b64,
+            "base64": compressed_b64,
             "content_type": "image/jpeg",
-            "filename":     image_obj.get("filename", "niebo.png").replace(".png", ".jpg"),
-            "size_jpg":     f"{len(buf.getvalue()) / 1024:.0f}KB",
+            "filename": image_obj.get("filename", "niebo.png").replace(".png", ".jpg"),
+            "size_jpg": f"{len(buf.getvalue()) / 1024:.0f}KB",
         }
-        
+
         # Skopiuj metadata z oryginalnego image_obj
         for key in ["seed", "token_name", "remaining_requests", "size_png"]:
             if key in image_obj:
                 result[key] = image_obj[key]
-        
+
         return result
     except Exception as e:
         current_app.logger.warning("[flux-compress] Blad kompresji: %s — zwracam oryginal", e)
@@ -325,7 +326,7 @@ def _call_groq(system: str, user: str) -> str | None:
     payload = {
         "model": GROQ_MODEL,
         "messages": [{"role": "system", "content": system},
-                     {"role": "user",   "content": user}],
+                     {"role": "user", "content": user}],
         "max_tokens": 300, "temperature": 0.95,
     }
     try:
@@ -355,7 +356,7 @@ def _load_word_list(path: str) -> list:
 
 def _mutate_flux_prompt(prompt: str) -> tuple:
     forbidden = _load_word_list(FILE_FLUX_FORBIDDEN)
-    suffixes  = _load_word_list(FILE_FLUX_MUTATIONS)
+    suffixes = _load_word_list(FILE_FLUX_MUTATIONS)
     if not forbidden or not suffixes:
         current_app.logger.warning("[mutate] Brak flux_forbidden.txt lub flux_mutations.txt")
         return prompt, []
@@ -379,7 +380,7 @@ def _call_groq_flux(system: str, user: str) -> str | None:
     payload = {
         "model": GROQ_MODEL,
         "messages": [{"role": "system", "content": system},
-                     {"role": "user",   "content": user}],
+                     {"role": "user", "content": user}],
         "max_tokens": 2000,
         "temperature": 0.95,
     }
@@ -406,11 +407,11 @@ def _generate_flux_prompt(source_text: str, groq_system_override: str = "") -> t
     if not prompt:
         current_app.logger.warning("[flux] Groq zawiodl — uzywam tekst wprost (1000 znaków)")
         prompt = source_text[:1000]
-    
+
     mutated_prompt, changes = _mutate_flux_prompt(prompt)
     if changes:
         current_app.logger.info("[flux] Mutacje: %s", ", ".join(changes))
-    
+
     provider = "groq" if groq_system_override == "" else "custom"
     return mutated_prompt, changes, provider
 
@@ -441,24 +442,24 @@ def _generate_flux_image(prompt: str, etap: int = 0, return_token_info: bool = F
     if not tokens:
         current_app.logger.error("[flux] Brak tokenow HF!")
         return None
-    
+
     current_app.logger.info(
         "[flux] Dostepne tokeny HF: %d sztuk", len(tokens)
     )
-    
+
     token_attempts = []  # Śledź wszystkie próby
-    
-    seed = random.randint(0, 2**32 - 1)
+
+    seed = random.randint(0, 2 ** 32 - 1)
     payload = {
         "inputs": prompt,
         "parameters": {
             "num_inference_steps": HF_STEPS,
-            "guidance_scale":      HF_GUIDANCE,
-            "seed":                seed,
+            "guidance_scale": HF_GUIDANCE,
+            "seed": seed,
         }
     }
     current_app.logger.info("[flux] prompt: %s seed: %d", prompt[:200], seed)
-    
+
     # Próbuj każdy token po kolei
     for name, token in tokens:
         attempt = {
@@ -468,42 +469,42 @@ def _generate_flux_image(prompt: str, etap: int = 0, return_token_info: bool = F
             "remaining_requests": None,
             "error": None
         }
-        
+
         headers = {"Authorization": f"Bearer {token}", "Accept": "image/png"}
         try:
             current_app.logger.info("[flux-attempt] Probuje token: %s", name)
             resp = requests.post(HF_API_URL, headers=headers, json=payload, timeout=TIMEOUT_SEC)
-            
+
             # Wyciągnij info z headera Hugging Face
             remaining = resp.headers.get("X-Remaining-Requests")
             if remaining:
                 attempt["remaining_requests"] = int(remaining)
-            
+
             attempt["http_code"] = resp.status_code
-            
+
             if resp.status_code == 200:
                 attempt["status"] = "SUCCESS"
                 current_app.logger.info(
                     "[flux] ✓ Token %s: sukces (PNG %d B, pozostalo: %s zadan)",
                     name, len(resp.content), remaining or "?"
                 )
-                
+
                 result = {
-                    "base64":       base64.b64encode(resp.content).decode("ascii"),
+                    "base64": base64.b64encode(resp.content).decode("ascii"),
                     "content_type": "image/png",
-                    "filename":     f"niebo_etap{etap}_seed{seed}.png",
-                    "seed":         seed,
-                    "token_name":   name,
+                    "filename": f"niebo_etap{etap}_seed{seed}.png",
+                    "seed": seed,
+                    "token_name": name,
                     "remaining_requests": int(remaining) if remaining else None,
-                    "size_png":     f"{len(resp.content) / 1024 / 1024:.1f}MB",
+                    "size_png": f"{len(resp.content) / 1024 / 1024:.1f}MB",
                 }
-                
+
                 # Dodaj info o tokenach jeśli jest tego wiele (dla debug)
                 if return_token_info and len(token_attempts) > 0:
                     result["token_info"] = token_attempts
-                
+
                 return result
-                
+
             elif resp.status_code in (401, 403):
                 attempt["status"] = "INVALID_TOKEN"
                 attempt["error"] = f"Nieautoryzowany ({resp.status_code})"
@@ -511,7 +512,7 @@ def _generate_flux_image(prompt: str, etap: int = 0, return_token_info: bool = F
                     "[flux] ✗ Token %s: invalid/expired (HTTP %d)",
                     name, resp.status_code
                 )
-                
+
             elif resp.status_code in (503, 529):
                 attempt["status"] = "OVERLOADED"
                 attempt["error"] = f"Przeciazony ({resp.status_code})"
@@ -519,7 +520,7 @@ def _generate_flux_image(prompt: str, etap: int = 0, return_token_info: bool = F
                     "[flux] ⚠ Token %s: serwer przeciazony (HTTP %d)",
                     name, resp.status_code
                 )
-                
+
             elif resp.status_code >= 500:
                 attempt["status"] = "SERVER_ERROR"
                 attempt["error"] = f"HTTP {resp.status_code}"
@@ -527,7 +528,7 @@ def _generate_flux_image(prompt: str, etap: int = 0, return_token_info: bool = F
                     "[flux] ✗ Token %s: blad serwera %d: %s",
                     name, resp.status_code, resp.text[:100]
                 )
-                
+
             else:
                 attempt["status"] = f"HTTP_{resp.status_code}"
                 attempt["error"] = resp.text[:100] if resp.text else "Unknown error"
@@ -535,33 +536,33 @@ def _generate_flux_image(prompt: str, etap: int = 0, return_token_info: bool = F
                     "[flux] ✗ Token %s: blad %d: %s",
                     name, resp.status_code, resp.text[:100]
                 )
-                
+
         except requests.exceptions.Timeout:
             attempt["status"] = "TIMEOUT"
             attempt["error"] = f"Timeout ({TIMEOUT_SEC}s)"
             current_app.logger.warning("[flux] ⏱ Token %s: timeout (%ds)", name, TIMEOUT_SEC)
-            
+
         except requests.exceptions.ConnectionError as e:
             attempt["status"] = "CONNECTION_ERROR"
             attempt["error"] = str(e)[:50]
             current_app.logger.warning("[flux] 🔌 Token %s: connection error: %s", name, str(e)[:50])
-            
+
         except Exception as e:
             attempt["status"] = "EXCEPTION"
             attempt["error"] = str(e)[:50]
             current_app.logger.warning("[flux] ❌ Token %s: exception: %s", name, str(e)[:50])
-        
+
         token_attempts.append(attempt)
-    
+
     current_app.logger.error(
         "[flux] ✗ Wszystkie tokeny HF zawiodly! (%d tokenow sprobowanych)",
         len(token_attempts)
     )
-    
+
     # Zwróć info o tokenach nawet przy porażce
     if return_token_info:
         return {"token_attempts": token_attempts}
-    
+
     return None
 
 
@@ -574,26 +575,26 @@ def _generate_multiple_flux_images(prompt: str, count: int, kompresja_jpg: int =
             if kompresja_jpg > 0:
                 img = _compress_flux_image(img, kompresja_jpg)
             images.append(img)
-            current_app.logger.info("[flux-multi] Obrazek %d/%d OK", i+1, count)
+            current_app.logger.info("[flux-multi] Obrazek %d/%d OK", i + 1, count)
         else:
-            current_app.logger.warning("[flux-multi] Obrazek %d/%d — brak", i+1, count)
+            current_app.logger.warning("[flux-multi] Obrazek %d/%d — brak", i + 1, count)
     return images
 
 
 def _build_debug_txt(
-    reply_text: str,
-    flux_prompt: str,
-    flux_provider: str,
-    etap: int,
-    ilosc_zamowiona: int = 0,
-    ilosc_wygenerowana: int = 0,
-    kompresja_jpg: int = 0,
-    mutation_changes: list = None,
-    token_info = None,
-    body_text: str = "",
-    system_prompt: str = "",
-    groq_response: str = "",
-    image_details: list = None,
+        reply_text: str,
+        flux_prompt: str,
+        flux_provider: str,
+        etap: int,
+        ilosc_zamowiona: int = 0,
+        ilosc_wygenerowana: int = 0,
+        kompresja_jpg: int = 0,
+        mutation_changes: list = None,
+        token_info=None,
+        body_text: str = "",
+        system_prompt: str = "",
+        groq_response: str = "",
+        image_details: list = None,
 ) -> dict:
     """
     Buduje szczegółowy debug info jako plain text — dla każdego obrazka.
@@ -603,9 +604,9 @@ def _build_debug_txt(
         mutation_changes = []
     if image_details is None:
         image_details = []
-    
+
     lines = []
-    
+
     # ═══ NAGŁÓWEK ═══
     lines.append("=" * 88)
     lines.append(f"=== DEBUG {datetime.now().isoformat()} ===")
@@ -614,7 +615,7 @@ def _build_debug_txt(
     lines.append(f"OBRAZKI: {ilosc_wygenerowana}/{ilosc_zamowiona}")
     lines.append(f"KOMPRESJA JPG: {kompresja_jpg}%")
     lines.append("")
-    
+
     # ═══ [1] WIADOMOŚĆ OD UŻYTKOWNIKA ═══
     lines.append("=" * 88)
     lines.append("[1] WIADOMOŚĆ OD UŻYTKOWNIKA")
@@ -625,7 +626,7 @@ def _build_debug_txt(
     else:
         lines.append("(brak tekstu wejściowego)")
     lines.append("")
-    
+
     # ═══ [2] SYSTEM PROMPT DLA GROQ ═══
     lines.append("=" * 88)
     lines.append("[2] SYSTEM PROMPT DLA GROQ")
@@ -635,7 +636,7 @@ def _build_debug_txt(
     else:
         lines.append("(brak system promptu)")
     lines.append("")
-    
+
     # ═══ [3] ODPOWIEDŹ OD GROQ ═══
     lines.append("=" * 88)
     lines.append("[3] ODPOWIEDŹ OD GROQ")
@@ -646,7 +647,7 @@ def _build_debug_txt(
     else:
         lines.append("(brak odpowiedzi od Groq)")
     lines.append("")
-    
+
     # ═══ [4] MUTACJA SŁÓW ZAKAZANYCH ═══
     lines.append("=" * 88)
     lines.append("[4] MUTACJA SŁÓW ZAKAZANYCH (flux_forbidden.txt)")
@@ -659,7 +660,7 @@ def _build_debug_txt(
     else:
         lines.append("Nie znaleziono słów do mutacji.")
     lines.append("")
-    
+
     # ═══ [5] FINALNA ZAWARTOŚĆ WYSŁANA DO FLUX ═══
     lines.append("=" * 88)
     lines.append("[5] FINALNA ZAWARTOŚĆ WYSŁANA DO FLUX")
@@ -671,7 +672,7 @@ def _build_debug_txt(
     lines.append(f"Prompt ({len(flux_prompt)} znaków):")
     lines.append(flux_prompt)
     lines.append("")
-    
+
     # ═══ [6] GENEROWANIE OBRAZKÓW — SZCZEGÓŁY ═══
     lines.append("=" * 88)
     lines.append("[6] GENEROWANIE OBRAZKÓW — SZCZEGÓŁY")
@@ -699,7 +700,7 @@ def _build_debug_txt(
     else:
         lines.append("(brak szczegółów obrazków)")
     lines.append("")
-    
+
     # ═══ [7] PODSUMOWANIE ═══
     lines.append("=" * 88)
     lines.append("[7] PODSUMOWANIE")
@@ -708,14 +709,14 @@ def _build_debug_txt(
     if token_info:
         lines.append(f"Tokeny HF: {token_info}")
     lines.append("")
-    
+
     lines.append("=" * 88)
     lines.append("KONIEC DEBUG")
     lines.append("=" * 88)
-    
+
     content = "\n".join(lines)
     b64 = base64.b64encode(content.encode("utf-8")).decode("ascii")
-    
+
     return {
         "base64": b64,
         "content_type": "text/plain",
@@ -728,13 +729,13 @@ def _build_debug_txt(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def build_smierc_section(
-    sender_email:     str,
-    body:             str  = "",
-    etap:             int  = 1,
-    data_smierci_str: str  = "nieznanego dnia",
-    historia:         list = None,
-    data:             dict = None,
-    **kwargs
+        sender_email: str,
+        body: str = "",
+        etap: int = 1,
+        data_smierci_str: str = "nieznanego dnia",
+        historia: list = None,
+        data: dict = None,
+        **kwargs
 ) -> dict:
     """
     Obsluguje dwa sposoby wywolania:
@@ -747,37 +748,37 @@ def build_smierc_section(
         historia = []
 
     if data is not None:
-        etap             = int(data.get("etap",         etap))
-        data_smierci_str = data.get("data_smierci",     data_smierci_str)
-        historia         = data.get("historia",         historia)
+        etap = int(data.get("etap", etap))
+        data_smierci_str = data.get("data_smierci", data_smierci_str)
+        historia = data.get("historia", historia)
     else:
         etap = int(etap)
 
     etapy_dict, style_dict = _load_config_xlsx()
-    max_etap     = max(etapy_dict.keys()) if etapy_dict else 50
+    max_etap = max(etapy_dict.keys()) if etapy_dict else 50
     historia_txt = _format_historia(historia)
 
     # ── WYSLANNIK (etap > max_etap) ───────────────────────────────────────────
     if etap > max_etap:
         s_row = style_dict.get(etap, {})
-        system_file      = s_row.get("styl_odpowiedzi_tekstowej", "")
+        system_file = s_row.get("styl_odpowiedzi_tekstowej", "")
         system_wyslannik = (
-            _load_style_file(system_file)
-            or _load_txt(FILE_WYSLANNIK_SYSTEM, fallback=(
-                "Jestes wyslannikiem z wyzszych sfer duchowych piszacym po polsku. "
-                "Przebijasz kazda rzecz wymieniona przez nadawce — tylko przymiotnikami, "
-                "nigdy liczbami. Ton: dostojny, poetycki, absurdalny. Max 4 zdania. "
-                "Podpisz sie: — Wyslannik z wyzszych sfer"
-            ))
+                _load_style_file(system_file)
+                or _load_txt(FILE_WYSLANNIK_SYSTEM, fallback=(
+            "Jestes wyslannikiem z wyzszych sfer duchowych piszacym po polsku. "
+            "Przebijasz kazda rzecz wymieniona przez nadawce — tylko przymiotnikami, "
+            "nigdy liczbami. Ton: dostojny, poetycki, absurdalny. Max 4 zdania. "
+            "Podpisz sie: — Wyslannik z wyzszych sfer"
+        ))
         )
         # Zakaz emoji (doklejamy na końcu system promptu)
         if "ZAKAZ" not in system_wyslannik:
             system_wyslannik += "\nZAKAZ uzywania emoji, emotikon i symboli specjalnych — tylko zwykly tekst."
 
-        dni_txt  = _dni_w_niebie(data_smierci_str)
+        dni_txt = _dni_w_niebie(data_smierci_str)
         user_msg = (
             f"Osoba pyta: {body}\n\nHistoria:\n{historia_txt}\n\n"
-            f"Data śmierci Pawła: {data_smierci_str}\n"            
+            f"Data śmierci Pawła: {data_smierci_str}\n"
         )
         wynik_tekst = call_deepseek(system_wyslannik, user_msg, MODEL_TYLER)
         if not wynik_tekst:
@@ -788,18 +789,18 @@ def build_smierc_section(
         reply_text = wynik_tekst or "Pawła nie ma — reinkarnował się."
         reply_text += _format_dni_info(data_smierci_str)
         reply_text += "\n\n— Wyslannik z wyższych sfer"
-        
+
         from core.html_builder import build_html_reply_dark
         reply_html = build_html_reply_dark(reply_text)
 
-        styl_file   = s_row.get("styl", "")
+        styl_file = s_row.get("styl", "")
         groq_system = _load_style_file(styl_file)
         source_with_date = f"{wynik_tekst or body}\n\n[Pawel umarl dnia: {data_smierci_str}]"
         flux_prompt, flux_changes, flux_provider = _generate_flux_prompt(
             source_with_date, groq_system_override=groq_system
         )
         image_result = _generate_flux_image(flux_prompt, etap=etap, return_token_info=True)
-        
+
         # Wyciągnij obrazek i token_info
         image = None
         token_info = None
@@ -809,7 +810,7 @@ def build_smierc_section(
                 token_info = image_result.get("token_info")
             elif "token_attempts" in image_result:
                 token_info = image_result.get("token_attempts")
-        
+
         # Przygotuj szczegóły obrazka
         image_details = []
         token_info_str = "N/A"
@@ -824,7 +825,7 @@ def build_smierc_section(
                 "remaining_requests": image.get("remaining_requests"),
             })
             token_info_str = image.get("token_name", "N/A")
-        
+
         debug_txt = _build_debug_txt(
             wynik_tekst or "", flux_prompt, flux_provider, etap,
             ilosc_zamowiona=1,
@@ -838,59 +839,59 @@ def build_smierc_section(
             image_details=image_details,
         )
 
-        current_app.logger.info("[wyslannik] etap=%d image=%s tokens=%s", 
-                               etap, bool(image), bool(token_info))
+        current_app.logger.info("[wyslannik] etap=%d image=%s tokens=%s",
+                                etap, bool(image), bool(token_info))
         return {
             "reply_html": reply_html,
-            "subject":    _build_subject(etap, "", max_etap),
-            "nowy_etap":  etap,
-            "images":     [image] if image else [],
-            "videos":     [],
-            "debug_txt":  debug_txt,
+            "subject": _build_subject(etap, "", max_etap),
+            "nowy_etap": etap,
+            "images": [image] if image else [],
+            "videos": [],
+            "debug_txt": debug_txt,
         }
 
     # ── ETAPY 1-max_etap — Pawel ──────────────────────────────────────────────
-    row   = etapy_dict.get(etap, {})
+    row = etapy_dict.get(etap, {})
     s_row = style_dict.get(etap, {})
 
     if not row:
         current_app.logger.warning("[smierc] Brak etapu %d w xlsx — tryb awaryjny", etap)
-        opis              = "Bladzenie w antymaterii"
-        obraz_filename    = ""
-        video_filename    = ""
+        opis = "Bladzenie w antymaterii"
+        obraz_filename = ""
+        video_filename = ""
         ilosc_obrazkow_ai = 1
-        kompresja_jpg     = 0
+        kompresja_jpg = 0
         system_prompt_tmpl = DEFAULT_SYSTEM_PROMPT
     else:
-        opis              = row.get("opis",  "")
-        obraz_filename    = row.get("obraz", "")
-        video_filename    = row.get("video", "")
+        opis = row.get("opis", "")
+        obraz_filename = row.get("obraz", "")
+        video_filename = row.get("video", "")
         ilosc_obrazkow_ai = _parse_int_col(row.get("ilosc_obrazkow_ai", "0"), default=0)
-        kompresja_jpg     = _parse_int_col(row.get("kompresja_jpg",     "0"), default=0)
+        kompresja_jpg = _parse_int_col(row.get("kompresja_jpg", "0"), default=0)
 
-        system_file        = s_row.get("styl_odpowiedzi_tekstowej", "")
+        system_file = s_row.get("styl_odpowiedzi_tekstowej", "")
         system_prompt_tmpl = _load_style_file(system_file) or DEFAULT_SYSTEM_PROMPT
         # Zakaz emoji (doklejamy na końcu jeśli jeszcze nie ma)
         if "ZAKAZ" not in system_prompt_tmpl:
             system_prompt_tmpl += "\nZAKAZ uzywania emoji, emotikon i symboli specjalnych — tylko zwykly tekst."
 
-    system   = system_prompt_tmpl.replace("{data_smierci_str}", data_smierci_str)
-    dni_txt  = _dni_w_niebie(data_smierci_str)
+    system = system_prompt_tmpl.replace("{data_smierci_str}", data_smierci_str)
+    dni_txt = _dni_w_niebie(data_smierci_str)
     user_msg = (
         f"Etap w zaswiatach: {opis}\nWiadomosc: {body}\nHistoria:\n{historia_txt}\n\n"
-        f"Data śmierci: {data_smierci_str}\n"       
+        f"Data śmierci: {data_smierci_str}\n"
     )
-    wynik    = call_deepseek(system, user_msg, MODEL_TYLER)
-    
+    wynik = call_deepseek(system, user_msg, MODEL_TYLER)
+
     # Fallback do Groq jeśli DeepSeek zawiedzie
     if not wynik:
         current_app.logger.warning("[smierc-etapy] DeepSeek zawiodl — probuje Groq")
         wynik = _call_groq(system, user_msg)
-    
+
     # 🆕 ZMIANA: Dodaj dni do HTML
     reply_text = wynik or "To autoresponder. Chwilowo brak zasięgu w tej strefie kosmicznej."
     reply_text += _format_dni_info(data_smierci_str)
-    
+
     from core.html_builder import build_html_reply
     reply_html = build_html_reply(reply_text)
 
@@ -899,14 +900,14 @@ def build_smierc_section(
 
     # Obrazki FLUX — N roznych wariacji dzieki losowemu seed
     flux_images = []
-    debug_txt   = None
-    token_info  = None
+    debug_txt = None
+    token_info = None
     if ilosc_obrazkow_ai > 0:
         current_app.logger.info(
             "[pawel-flux] etap=%d ilosc=%d kompresja=%d%% — generuje FLUX",
             etap, ilosc_obrazkow_ai, kompresja_jpg
         )
-        styl_file    = s_row.get("styl", "")
+        styl_file = s_row.get("styl", "")
         groq_system = _load_style_file(styl_file)
         source_with_date = f"{wynik or opis}\n\n[Pawel umarl dnia: {data_smierci_str}]"
         flux_prompt, flux_changes, flux_provider = _generate_flux_prompt(
@@ -918,7 +919,7 @@ def build_smierc_section(
         flux_images = _generate_multiple_flux_images(
             flux_prompt, ilosc_obrazkow_ai, kompresja_jpg, etap
         )
-        
+
         # Wyciągnij token_info z pierwszego obrazka i szczegóły wszystkich
         image_details = []
         token_summary = {}
@@ -934,15 +935,16 @@ def build_smierc_section(
                     "remaining_requests": img.get("remaining_requests"),
                 }
                 image_details.append(img_detail)
-                
+
                 # Zlicz tokeny
                 token_name = img.get("token_name", "unknown")
                 if token_name not in token_summary:
                     token_summary[token_name] = 0
                 token_summary[token_name] += 1
-        
-        token_info_str = ", ".join([f"{k}: {v} obrazków" for k, v in sorted(token_summary.items())]) if token_summary else "N/A"
-        
+
+        token_info_str = ", ".join(
+            [f"{k}: {v} obrazków" for k, v in sorted(token_summary.items())]) if token_summary else "N/A"
+
         debug_txt = _build_debug_txt(
             wynik or "", flux_prompt, flux_provider, etap,
             ilosc_zamowiona=ilosc_obrazkow_ai,
@@ -968,9 +970,9 @@ def build_smierc_section(
     )
     return {
         "reply_html": reply_html,
-        "subject":    _build_subject(etap, opis, max_etap),
-        "nowy_etap":  etap + 1,
-        "images":     images,
-        "videos":     [mp4] if mp4 else [],
-        "debug_txt":  debug_txt,
+        "reply_text": wynik or "",
+        "nowy_etap": etap + 1,
+        "images": images,
+        "videos": [mp4] if mp4 else [],
+        "debug_txt": debug_txt,
     }
