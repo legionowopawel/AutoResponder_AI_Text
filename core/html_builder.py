@@ -56,14 +56,13 @@ def build_html_reply(body_text: str) -> str:
         }}
         .footer {{
             margin-top: 30px;
-            padding-top: 20px;
+            padding: 20px 15px 15px 15px;
             border-top: 2px solid #FFE0B2;
             font-size: 12px;
             color: #0a8a0a;
             text-align: center;
             background: linear-gradient(to bottom, transparent, rgba(255, 224, 178, 0.2));
             border-radius: 6px;
-            padding: 15px;
         }}
         .footer a {{
             color: #0a8a0a;
@@ -96,8 +95,8 @@ def build_html_reply(body_text: str) -> str:
             <p style="margin: 0 0 10px 0;">
                 Odpowiedź wygenerowana automatycznie przez system Script + Render.<br>
                 <span style="font-size: 11px; color: #088a08;">
-                    🔗 Projekt dostępny na GitHub:<br>
-                    <a href="https://github.com/legionowopawel/AutoResponder_AI_Text.git">
+                    Projekt dostępny na GitHub:<br>
+                    <a href="https://github.com/legionowopawel/AutoResponder_AI_Text" style="color: #088a08; text-decoration: none;">
                         AutoResponder_AI_Text
                     </a>
                 </span>
@@ -138,7 +137,7 @@ def build_html_reply_minimal(body_text: str) -> str:
     <p><i>{body_text}</i></p>
     <p style="font-size: 11px; color: #0a8a0a; margin-top: 20px;">
         Odpowiedź wygenerowana automatycznie.<br>
-        <a href="https://github.com/legionowopawel/AutoResponder_AI_Text.git" style="color: #0a8a0a; text-decoration: none;">
+        <a href="https://github.com/legionowopawel/AutoResponder_AI_Text" style="color: #0a8a0a; text-decoration: none;">
             Script + Render
         </a>
     </p>
@@ -201,7 +200,7 @@ def build_html_reply_dark(body_text: str) -> str:
         </div>
         <div class="footer">
             Odpowiedź automatyczna | Script + Render<br>
-            <a href="https://github.com/legionowopawel/AutoResponder_AI_Text.git" style="color: #90CAF9; text-decoration: none;">
+            <a href="https://github.com/legionowopawel/AutoResponder_AI_Text" style="color: #90CAF9; text-decoration: none;">
                 GitHub
             </a>
         </div>

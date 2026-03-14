@@ -557,8 +557,7 @@ def build_smierc_section(
         dni_txt  = _dni_w_niebie(data_smierci_str)
         user_msg = (
             f"Osoba pyta: {body}\n\nHistoria:\n{historia_txt}\n\n"
-            f"Data śmierci Pawła: {data_smierci_str}\n"
-            + (f"Wzmiankuj naturalnie w tekście: {dni_txt}\n" if dni_txt else "")
+            f"Data śmierci Pawła: {data_smierci_str}\n"            
         )
         wynik_tekst = call_deepseek(system_wyslannik, user_msg, MODEL_TYLER)
         if not wynik_tekst:
@@ -639,8 +638,7 @@ def build_smierc_section(
     dni_txt  = _dni_w_niebie(data_smierci_str)
     user_msg = (
         f"Etap w zaswiatach: {opis}\nWiadomosc: {body}\nHistoria:\n{historia_txt}\n\n"
-        f"Data śmierci: {data_smierci_str}\n"
-        + (f"Wzmiankuj naturalnie w tekście: {dni_txt}\n" if dni_txt else "")
+        f"Data śmierci: {data_smierci_str}\n"       
     )
     wynik    = call_deepseek(system, user_msg, MODEL_TYLER)
     
