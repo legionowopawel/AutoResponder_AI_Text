@@ -382,6 +382,184 @@ def _load_style_config() -> dict:
     return {}
 
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# KONFIGURACJA POSTACI, STYLÓW, AKCJI
+# ═══════════════════════════════════════════════════════════════════════════════
+
+FIGHT_CLUB_CHARACTERS = [
+    "Brad Pitt as Tyler Durden — unwashed, split lip, bruised face, greasy matted hair, shirtless with soap-burn scars",
+    "Edward Norton as the Narrator — disheveled office worker, black eye, torn suit, exhausted hollow gaze",
+    "Helena Bonham Carter as Marla Singer — dark smoky eyes, vintage thrift-store dress, cigarette always in hand, nihilistic smirk",
+    "Meat Loaf as Bob — enormous man with gynecomastia, tearful desperate eyes, oversized sweater",
+    "Jared Leto as Angel Face — beautiful but battered face, blood on perfect teeth, angelic features destroyed",
+]
+
+PANEL_STYLES = [
+    "35mm film grain, high contrast, sickly green and amber tones, Fincher cinematography",
+    "raw gritty street photography, harsh fluorescent light, 1990s documentary style",
+    "extreme chiaroscuro, single bare bulb lighting, deep shadows, industrial decay",
+    "handheld camera blur, motion, chaotic energy, smoke and sweat",
+    "desaturated noir, cold blue shadows, cracked concrete textures",
+    "overexposed bleach bypass, washed out whites, dark crushed blacks",
+]
+
+PANEL_ACTIONS = [
+    "screaming at the camera with veins on neck",
+    "throwing objects violently across the room",
+    "laughing maniacally with blood on teeth",
+    "grabbing someone by the collar",
+    "smoking aggressively, ash falling on clothes",
+    "pointing finger directly at viewer with intense rage",
+    "sitting on floor surrounded by wreckage, staring into nothing",
+    "writing on a wall with bloody knuckles",
+    "running through a dark corridor",
+    "standing over a pile of burning objects",
+]
+
+
+def _extract_nouns_from_body(body: str) -> list:
+    """
+    Wyciąga rzeczowniki/konkretne obiekty z treści emaila.
+    Szuka słów pisanych z wielkiej litery (imiona, miejsca) oraz
+    typowych rzeczowników codziennych.
+    Zwraca listę max 6 słów.
+    """
+    # Słowa które zawsze wyrzucamy (stopwords)
+    stopwords = {
+        "się", "nie", "jak", "ale", "czy", "też", "już", "aby", "żeby",
+        "tego", "tej", "ten", "tak", "jest", "był", "być", "mam", "mieć",
+        "to", "i", "w", "z", "na", "do", "po", "za", "od", "przez",
+        "że", "co", "gdy", "więc", "bo", "dla", "przy", "nad", "pod",
+        "mój", "moja", "moje", "jego", "jej", "ich", "swój", "twój",
+        "wszystko", "tylko", "jeszcze", "bardzo", "bardziej", "może",
+        "chcę", "musi", "można", "który", "która", "które",
+    }
+    words = re.findall(r'[A-Za-zżźćńółęąśŻŹĆŃÓŁĘĄŚ]{4,}', body)
+    seen = set()
+    nouns = []
+    for w in words:
+        wl = w.lower()
+        if wl not in stopwords and wl not in seen:
+            seen.add(wl)
+            nouns.append(w)
+        if len(nouns) >= 6:
+            break
+    return nouns
+
+
+def _detect_sender_name(body: str) -> str | None:
+    """
+    Próbuje wykryć imię nadawcy z treści emaila.
+    Szuka podpisu na końcu lub zwrotu do siebie w pierwszej osobie.
+    Zwraca imię lub None.
+    """
+    # Szukaj podpisu: linia z jednym słowem zaczynającym się wielką literą
+    # na końcu wiadomości
+    lines = [l.strip() for l in body.strip().splitlines() if l.strip()]
+    for line in reversed(lines[-5:]):
+        m = re.match(r'^([A-ZŁŻŹĆŃÓĘĄŚ][a-złżźćńóęąś]{2,12})$', line)
+        if m:
+            return m.group(1)
+
+    # Szukaj "Pozdrawiam, Imię" lub "— Imię"
+    m = re.search(
+        r'(?:pozdrawiam|pozdrowienia|z poważaniem|regards)[,\s]+([A-ZŁŻŹĆŃÓĘĄŚ][a-złżźćńóęąś]{2,12})',
+        body, re.IGNORECASE
+    )
+    if m:
+        return m.group(1)
+
+    m = re.search(r'(?:^|\n)[—–-]\s*([A-ZŁŻŹĆŃÓĘĄŚ][a-złżźćńóęąś]{2,12})', body)
+    if m:
+        return m.group(1)
+
+    return None
+
+
+def _add_text_below_image(image_obj: dict, text: str, panel_index: int) -> dict:
+    """
+    Rozszerza obrazek o 15% na dole i dopisuje tekst Pillow.
+    Zwraca nowy dict z zaktualizowanym base64/filename.
+    """
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+
+        raw = base64.b64decode(image_obj["base64"])
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+        W, H = img.size
+
+        # Pasek na dole — 15% wysokości, min 60px
+        bar_h = max(60, int(H * 0.15))
+        new_img = Image.new("RGB", (W, H + bar_h), (10, 10, 10))
+        new_img.paste(img, (0, 0))
+
+        draw = ImageDraw.Draw(new_img)
+
+        # Font — próbuj systemowy, fallback na default
+        font_size = max(16, bar_h // 3)
+        font = None
+        for font_path in [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+        ]:
+            try:
+                font = ImageFont.truetype(font_path, font_size)
+                break
+            except Exception:
+                continue
+        if not font:
+            font = ImageFont.load_default()
+
+        # Zawijanie tekstu
+        max_chars = max(30, W // (font_size // 2))
+        words = text.split()
+        lines_out = []
+        current = ""
+        for word in words:
+            test = (current + " " + word).strip()
+            if len(test) <= max_chars:
+                current = test
+            else:
+                if current:
+                    lines_out.append(current)
+                current = word
+        if current:
+            lines_out.append(current)
+        lines_out = lines_out[:3]  # max 3 linie
+
+        # Rysuj tekst — wyśrodkowany w pasku
+        total_text_h = len(lines_out) * (font_size + 4)
+        y = H + (bar_h - total_text_h) // 2
+        for line in lines_out:
+            bbox = draw.textbbox((0, 0), line, font=font)
+            tw = bbox[2] - bbox[0]
+            x = (W - tw) // 2
+            # cień
+            draw.text((x + 1, y + 1), line, font=font, fill=(0, 0, 0))
+            draw.text((x, y), line, font=font, fill=(220, 210, 180))
+            y += font_size + 4
+
+        buf = io.BytesIO()
+        new_img.save(buf, format="JPEG", quality=TYLER_JPG_QUALITY, optimize=True)
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"tyler_{ts}_panel{panel_index}_txt.jpg"
+
+        result = dict(image_obj)
+        result["base64"]   = b64
+        result["filename"] = filename
+        result["size_jpg"] = f"{len(buf.getvalue()) // 1024}KB"
+        result["caption"]  = text
+        return result
+
+    except Exception as e:
+        current_app.logger.warning("[tyler-txt] Błąd dopisywania tekstu: %s", e)
+        return image_obj
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # GENEROWANIE PROMPTÓW DLA TRYPTYKU (Groq → DeepSeek fallback)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -471,99 +649,74 @@ def _generate_panel_prompt(
 ) -> str:
     """
     Generuje angielski prompt FLUX dla jednego panelu tryptyku.
-    Używa Groq (szybszy) → DeepSeek fallback.
-
-    panel_index: 1, 2 lub 3
-    response_text: pełna odpowiedź Tylera/Sokratesa do adresata
-    body: oryginalny email nadawcy
+    - Losuje postać Fight Club per panel
+    - Wykrywa imię nadawcy i wplata jako postać drugoplanową
+    - Wyciąga rzeczowniki z emaila jako obiekty w scenie
+    - Losuje styl wizualny i akcję
+    - Bez dymków — tekst dopisuje Pillow osobno
     """
-    actor       = style_config.get("actor", "Brad Pitt")
-    character   = style_config.get("character", "Tyler Durden")
-    base_style  = style_config.get("base_style", "cinematic film still, Fight Club aesthetic")
-    quality     = style_config.get("quality_tags", "masterpiece, best quality")
-    neg_prompt  = style_config.get("negative_prompt", "anime, cartoon, blurry")
-    bubble_style = style_config.get("speech_bubble_style", "hand-drawn speech bubble")
-    layout      = panel_config.get("layout", "")
+    base_style   = style_config.get("base_style", "cinematic film still, Fight Club 1999 aesthetic")
+    quality      = style_config.get("quality_tags", "photorealistic, raw, gritty")
+    neg_prompt   = style_config.get("negative_prompt",
+                       "clean, polished, glamorous, beautiful, anime, cartoon, blurry, text, watermark")
 
-    # ── Wyciągnij gotowe zdania z odpowiedzi Tylera ─────────────────────────
+    # ── Losuj postać, styl, akcję ─────────────────────────────────────────────
+    character    = random.choice(FIGHT_CLUB_CHARACTERS)
+    panel_style  = random.choice(PANEL_STYLES)
+    action       = random.choice(PANEL_ACTIONS)
+
+    # ── Rzeczowniki z emaila ──────────────────────────────────────────────────
+    nouns = _extract_nouns_from_body(body)
+    nouns_str = ", ".join(nouns[:4]) if nouns else "debris, trash, broken furniture"
+
+    # ── Imię nadawcy → postać drugoplanowa ───────────────────────────────────
+    sender_name = _detect_sender_name(body)
+    if sender_name:
+        sender_char = (
+            f"A Polish woman named {sender_name} is also in the scene — "
+            f"ordinary clothes, overwhelmed expression, reacting to the chaos."
+        )
+    else:
+        sender_char = ""
+
+    # ── Cytat Tylera (bez dymka — tylko jako kontekst dla sceny) ─────────────
     tyler_sentences = _extract_tyler_sentences(response_text)
+    quote_map = {"1": "panel1", "2": "panel2", "3": "panel3"}
+    caption = tyler_sentences.get(quote_map.get(str(panel_index), "panel1"), "")
 
-    # ── Wybierz treść dymka (zawsze po polsku, zawsze z emaila) ──────────────
-    if panel_index == 1:
-        bubble_text   = tyler_sentences["panel1"]
-        panel_purpose = "Tyler konfrontuje widza z jedną ze swoich zasad"
+    system_for_flux = (
+        "You are a cinematic visual prompt engineer for FLUX image generation. "
+        "Create a raw, gritty, photorealistic movie still. "
+        "No speech bubbles, no text in the image — text will be added separately. "
+        "Describe: character physical appearance, specific action, environment, objects, lighting. "
+        "The character must look damaged, tired, unwashed — NOT clean or handsome. "
+        "Output: ONE paragraph, max 120 words, no bullet points. Only the prompt."
+    )
 
-    elif panel_index == 2:
-        bubble_text   = tyler_sentences["panel2"]
-        panel_purpose = "Tyler wygłasza nihilistyczny manifest"
-
-    else:
-        bubble_text   = tyler_sentences["panel3"]
-        panel_purpose = "Tyler wyrzuca przedmioty symbolizujące problemy nadawcy"
-
-    # System prompt dla modelu generującego prompt FLUX
-    if panel_index == 2:
-        # Panel środkowy — wolna interpretacja cytatu, bez narzucania kompozycji
-        system_for_flux = (
-            "You are a cinematic visual prompt engineer for FLUX image generation. "
-            "You receive a Polish quote and create a free visual interpretation — "
-            "NO fixed poses, NO fixed camera angles, NO fixed backgrounds. "
-            "The image should FEEL like the quote, not illustrate it literally. "
-            "CRITICAL: The Polish quote text must appear somewhere in the image exactly as given — "
-            "do NOT translate it. "
-            "Output: ONE paragraph, max 100 words, no bullet points. Only the prompt."
-        )
-        user_for_flux = (
-            f"Create a free FLUX image prompt inspired by this Polish quote:\n"
-            f"\"{bubble_text}\"\n\n"
-            f"Character if present: {actor} as {character}, {base_style}\n"
-            f"The quote must appear in the image in Polish exactly as written.\n"
-            f"Style: {base_style}, {quality}\n"
-            "No fixed layout. Interpret freely. Write the prompt now:"
-        )
-    else:
-        system_for_flux = (
-            "You are a cinematic visual prompt engineer for FLUX image generation. "
-            "You create precise, vivid English prompts for photorealistic movie stills. "
-            "Always describe: actor name, character name, exact pose, lighting, background, "
-            "speech bubble content and placement. "
-            "CRITICAL RULE: The speech bubble text MUST appear in Polish exactly as given — "
-            "do NOT translate it to English under any circumstances. "
-            "Output: ONE paragraph, max 120 words, no bullet points, no explanations. "
-            "Only the prompt text."
-        )
-        user_for_flux = (
-            f"Create a FLUX image generation prompt for panel {panel_index} of 3 in a triptych.\n\n"
-            f"Actor: {actor} as {character} from Fight Club (1999)\n"
-            f"Panel purpose: {panel_purpose}\n"
-            f"Layout description: {layout}\n"
-            f"Speech bubble text — MUST BE IN POLISH, do not translate: \"{bubble_text}\"\n"
-            f"Speech bubble visual style: {bubble_style}\n"
-            f"Base visual style: {base_style}\n"
-            f"Quality tags: {quality}\n"
-            f"Negative prompt (do NOT include these): {neg_prompt}\n\n"
-            f"Original email context (Polish, for reference only, do NOT translate):\n{body[:500]}\n\n"
-            "Write the complete FLUX prompt now. Remember: speech bubble text stays in Polish:"
-        )
+    user_for_flux = (
+        f"Panel {panel_index} of 3. Fight Club 1999 aesthetic.\n\n"
+        f"Main character: {character}\n"
+        f"Action: {action}\n"
+        f"Objects in scene (from sender email context): {nouns_str}\n"
+        f"Visual style: {panel_style}, {base_style}\n"
+        f"{sender_char}\n"
+        f"Negative: {neg_prompt}\n\n"
+        f"The scene should evoke the mood of this quote (do NOT render as text): '{caption}'\n\n"
+        "Write the FLUX prompt now:"
+    )
 
     flux_prompt, provider = _call_ai_with_fallback(system_for_flux, user_for_flux, max_tokens=300)
 
     if not flux_prompt:
-        # Hardcoded fallback prompt
         flux_prompt = (
-            f"{actor} as {character}, {layout}, "
-            f"speech bubble saying '{bubble_text}', "
-            f"{base_style}, {quality}"
+            f"{character}, {action}, surrounded by {nouns_str}, "
+            f"{panel_style}, {base_style}, {quality}"
         )
-        provider = "fallback"
 
-    current_app.logger.info("[zwykly-img] Panel %d prompt (%s): %.120s", panel_index, provider, flux_prompt)
-    return flux_prompt
+    current_app.logger.info("[zwykly-img] Panel %d prompt (%s): %.120s",
+                            panel_index, provider, flux_prompt)
+    return flux_prompt, caption
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# ROTACJA TOKENÓW HF — wzorowane na smierc.py
-# ═══════════════════════════════════════════════════════════════════════════════
 
 def _get_hf_tokens() -> list:
     """Pobiera listę tokenów HF (HF_TOKEN, HF_TOKEN1...HF_TOKEN20)."""
@@ -719,8 +872,8 @@ def _generate_triptych(
     for panel in panels_config:
         idx = panel.get("index", len(images) + 1)
 
-        # Generuj prompt dla panelu
-        flux_prompt = _generate_panel_prompt(
+        # Generuj prompt dla panelu (zwraca tuple: prompt + cytat)
+        flux_prompt, caption = _generate_panel_prompt(
             panel_index=idx,
             panel_config=panel,
             style_config=style_config,
@@ -734,7 +887,8 @@ def _generate_triptych(
         image = _generate_flux_image(flux_prompt, panel_index=idx)
 
         if image:
-            image = _png_to_jpg(image, panel_index=idx)   # PNG → JPG 95%
+            image = _png_to_jpg(image, panel_index=idx)          # PNG → JPG 95%
+            image = _add_text_below_image(image, caption, idx)   # dopisz tekst pod obrazkiem
             images.append(image)
             current_app.logger.info("[zwykly-img] Panel %d/%d: OK (%s)",
                                     idx, len(panels_config), image.get("filename", "?"))
