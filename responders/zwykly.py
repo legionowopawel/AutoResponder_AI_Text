@@ -497,40 +497,56 @@ def _add_text_below_image(image_obj: dict, text: str, panel_index: int) -> dict:
         draw = ImageDraw.Draw(new_img)
 
         # Font — próbuj systemowy, fallback na default
-        font_size = max(16, bar_h // 3)
-        font = None
-        for font_path in [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-            "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
-        ]:
-            try:
-                font = ImageFont.truetype(font_path, font_size)
-                break
-            except Exception:
-                continue
-        if not font:
-            font = ImageFont.load_default()
+        # Rozmiar: zaczynamy od bar_h//4, potem zmniejszamy aż tekst się zmieści
+        PADDING = 16  # marginesy lewy+prawy
+        max_w = W - PADDING * 2
 
-        # Zawijanie tekstu
-        max_chars = max(30, W // (font_size // 2))
-        words = text.split()
-        lines_out = []
-        current = ""
-        for word in words:
-            test = (current + " " + word).strip()
-            if len(test) <= max_chars:
-                current = test
-            else:
-                if current:
-                    lines_out.append(current)
-                current = word
-        if current:
-            lines_out.append(current)
-        lines_out = lines_out[:3]  # max 3 linie
+        def load_font(size):
+            for font_path in [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+            ]:
+                try:
+                    return ImageFont.truetype(font_path, size)
+                except Exception:
+                    continue
+            return ImageFont.load_default()
+
+        # Zawijanie tekstu z uwzględnieniem rzeczywistej szerokości pikseli
+        def wrap_text(txt, fnt, max_px):
+            words = txt.split()
+            lines_out = []
+            current = ""
+            for word in words:
+                test = (current + " " + word).strip()
+                bbox = draw.textbbox((0, 0), test, font=fnt)
+                if bbox[2] - bbox[0] <= max_px:
+                    current = test
+                else:
+                    if current:
+                        lines_out.append(current)
+                    current = word
+            if current:
+                lines_out.append(current)
+            return lines_out
+
+        # Dobierz font_size tak żeby tekst zmieścił się w max 3 liniach w pasku
+        font_size = max(14, bar_h // 4)
+        for attempt in range(8):
+            font = load_font(font_size)
+            lines_out = wrap_text(text, font, max_w)
+            line_h = font_size + 6
+            total_h = len(lines_out) * line_h
+            if total_h <= bar_h - 8 and len(lines_out) <= 3:
+                break
+            font_size = max(12, font_size - 3)
+
+        lines_out = lines_out[:3]
 
         # Rysuj tekst — wyśrodkowany w pasku
-        total_text_h = len(lines_out) * (font_size + 4)
+        line_h = font_size + 6
+        total_text_h = len(lines_out) * line_h
         y = H + (bar_h - total_text_h) // 2
         for line in lines_out:
             bbox = draw.textbbox((0, 0), line, font=font)
@@ -539,7 +555,7 @@ def _add_text_below_image(image_obj: dict, text: str, panel_index: int) -> dict:
             # cień
             draw.text((x + 1, y + 1), line, font=font, fill=(0, 0, 0))
             draw.text((x, y), line, font=font, fill=(220, 210, 180))
-            y += font_size + 4
+            y += line_h
 
         buf = io.BytesIO()
         new_img.save(buf, format="JPEG", quality=TYLER_JPG_QUALITY, optimize=True)
