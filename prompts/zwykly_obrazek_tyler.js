@@ -11,16 +11,16 @@
     "instruction": "A wide horizontal 3:1 aspect ratio image divided into 3 equal side-by-side vertical panels by thin black lines. Each panel must show a distinct camera angle.",
     "panels": [
       {
-        "panel_1": "Medium shot. Tyler Durden in a dark basement. He is pointing his finger at the camera. Intimidating gaze. Industrial background.",
-        "text_rendering": "A speech bubble with hand-drawn ink style containing the words: '[TEXT_1]'. Text must be sharp and legible."
+        "composition": "Cinematic medium shot, 35mm film style. Tyler Durden (Brad Pitt, 1999) stands in a dark, damp industrial basement. He is pointing his finger directly at the camera lens with a menacing, intense gaze. Gritty textures, sweat on brow, flickering fluorescent overhead light.",
+        "text_rendering": "A gritty, hand-drawn comic speech bubble emerges from Tyler's side. Inside the bubble, the Polish text: '[TEXT_1]' is rendered in bold, distressed black ink. The font is high-contrast, perfectly sharp, and clearly legible. The Polish characters and diacritics are accurately depicted."
       },
       {
         "panel_2": "Extreme close-up of Tyler's face. Focus on eyes and chipped tooth. Heavy sweat and skin pores visible. Dramatic shadows.",
-        "text_rendering": "A speech bubble floating near his mouth with the words: '[TEXT_2]' written in bold distressed font."
+        "text_rendering": "A gritty, hand-drawn comic speech bubble emerges from Tyler's side. Inside the bubble, the Polish text: '[TEXT_2]' is rendered in bold, distressed black ink. The font is high-contrast, perfectly sharp, and clearly legible. The Polish characters and diacritics are accurately depicted."
       },
       {
         "panel_3": "Low angle wide shot. Tyler standing victoriously over a pile of [USER_OBJECTS]. Dark urban alleyway, steam rising from pipes.",
-        "text_rendering": "Text '[TEXT_3]' rendered as bold graffiti on the wall behind him."
+        "text_rendering": "A gritty, hand-drawn comic speech bubble emerges from Tyler's side. Inside the bubble, the Polish text: '[TEXT_3]' is rendered in bold, distressed black ink. The font is high-contrast, perfectly sharp, and clearly legible. The Polish characters and diacritics are accurately depicted."
       }
     ]
   },
