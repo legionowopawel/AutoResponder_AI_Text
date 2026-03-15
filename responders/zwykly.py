@@ -234,7 +234,7 @@ def _render_prompt(data: dict, body: str) -> str:
 # GROQ — główny model (szybszy), DeepSeek — fallback
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _call_groq(system: str, user: str, max_tokens: int = 4000) -> str | None:
+def _call_groq(system: str, user: str, max_tokens: int = 6000) -> str | None:
     """
     Wywołuje Groq API (llama-3.3-70b-versatile).
     Zwraca tekst odpowiedzi lub None przy błędzie.
@@ -269,7 +269,7 @@ def _call_groq(system: str, user: str, max_tokens: int = 4000) -> str | None:
     return None
 
 
-def _call_ai_with_fallback(system: str, user: str, max_tokens: int = 4000) -> tuple[str | None, str]:
+def _call_ai_with_fallback(system: str, user: str, max_tokens: int = 6000) -> tuple[str | None, str]:
     """
     Groq PIERWSZY → DeepSeek FALLBACK.
     Zwraca (tekst_odpowiedzi, nazwa_providera).
@@ -983,7 +983,7 @@ def build_zwykly_section(body: str) -> dict:
     user_msg   = prompt_str
 
     # ── 2. Wywołaj model (Groq → DeepSeek) ───────────────────────────────────
-    res_raw, provider = _call_ai_with_fallback(system_msg, user_msg, max_tokens=8000)
+    res_raw, provider = _call_ai_with_fallback(system_msg, user_msg, max_tokens=6000)
 
     current_app.logger.info("[zwykly] Provider użyty: %s", provider)
 
