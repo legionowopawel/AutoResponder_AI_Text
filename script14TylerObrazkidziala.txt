@@ -1,10 +1,11 @@
 /**
  * __AAA_processEmails - Google Apps Script
- * WERSJA 5 - Z POPRAWKAMI:
- * 1. executeSmircMailSend() - DODANO attachments.push(imgBlob)
- * 2. SMIERC kontynuacja - ZAWSZE pobierz świeżą datę z B2
- * 3. _updateSmircData() - POPRAWIONO wcięcia i logikę (reply_text -> reply_html)
- * 
+ * WERSJA 6 - POPRAWKI:
+ * 1. isBiz / isAllowed obliczane PRZED blokiem RE:/FWD: — dostępne w obu gałęziach
+ * 2. Osoba z ALLOWED_LIST + SMIERC dostaje oba respondery: zwykly + smierc
+ *    (dotyczy: nowej wiadomości, kontynuacji SMIERC, odpowiedzi RE:/FWD:)
+ * 3. Pozostałe funkcje bez zmian
+ *
  * Struktura SMIERC arkusza:
  * - Każda zakładka = email osoby (nazwa: email_z_underscore, np. persecyfr_gmail_com)
  * - Kolumna A: nr etapu (1, 2, 3...)
@@ -62,9 +63,9 @@ function removeGeneratorPdfKeyword(text, keyword) {
   var re = new RegExp(escapeRegExp(keyword), "gi");
   return text.replace(re, shortened);
 }
+
 function extractPlainTextFromHtml(htmlText) {
   if (!htmlText) return "";
-  
   var cleanText = htmlText
     .replace(/<!DOCTYPE[^>]*>/gi, "")
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
@@ -78,9 +79,9 @@ function extractPlainTextFromHtml(htmlText) {
     .replace(/&#39;/g, "'")
     .replace(/\s+/g, " ")
     .trim();
-  
   return cleanText;
 }
+
 // ── Google Sheets: historia zwykłych wiadomości ───────────────────────────────
 function saveToHistory(senderEmail, subject, body) {
   try {
@@ -179,38 +180,38 @@ function _isResponseToSmircMessage(msg, senderEmail) {
   try {
     var sheetId = PropertiesService.getScriptProperties().getProperty("SMIERC_HISTORY_SHEET_ID");
     if (!sheetId) return false;
-    
+
     var ss = SpreadsheetApp.openById(sheetId);
     var sheetNameForEmail = senderEmail.replace("@", "_").replace(/\./g, "_");
     var sheets = ss.getSheets();
     var sheet = null;
-    
+
     for (var i = 0; i < sheets.length; i++) {
       if (sheets[i].getName().toLowerCase().trim() === sheetNameForEmail.toLowerCase().trim()) {
         sheet = sheets[i];
         break;
       }
     }
-    
+
     if (!sheet) {
       console.log("DEBUG _isResponseToSmircMessage: brak arkusza dla " + senderEmail);
       return false;
     }
-    
+
     var lastRow = sheet.getLastRow();
     if (lastRow < 2) {
       console.log("DEBUG _isResponseToSmircMessage: arkusz pusty");
       return false;
     }
-    
+
     var lastMsgId = sheet.getRange(lastRow, 5).getValue().toString().trim();
     var currentThreadId = msg.getThread().getId();
-    
+
     console.log("DEBUG _isResponseToSmircMessage: lastMsgId=" + lastMsgId + " currentThreadId=" + currentThreadId);
     console.log("DEBUG: osoba " + senderEmail + " ma historię smierc");
-    
+
     return true;
-    
+
   } catch(e) {
     console.error("Błąd _isResponseToSmircMessage: " + e.message);
     return false;
@@ -224,15 +225,14 @@ function _getSmircData(senderEmail) {
       console.warn("Brak SMIERC_HISTORY_SHEET_ID");
       return null;
     }
-    
+
     var ss = SpreadsheetApp.openById(sheetId);
     var sheet = null;
-    
-    // Normalizacja nazwy arkusza (zamiana @ i . na _)
+
     var sheetNameForEmail = senderEmail.replace("@", "_").replace(/\./g, "_");
-    
+
     console.log("DEBUG _getSmircData: szukam arkusza dla email=" + senderEmail + " szukam=" + sheetNameForEmail);
-    
+
     var sheets = ss.getSheets();
     for (var i = 0; i < sheets.length; i++) {
       if (sheets[i].getName().toLowerCase().trim() === sheetNameForEmail.toLowerCase().trim()) {
@@ -241,36 +241,32 @@ function _getSmircData(senderEmail) {
         break;
       }
     }
-    
+
     if (!sheet) {
       console.log("Brak arkusza dla email: " + senderEmail);
       return null;
     }
-    
+
     var lastRow = sheet.getLastRow();
     if (lastRow < 2) {
       console.log("Arkusz pusty: " + senderEmail);
       return null;
     }
 
-    // Pobieramy dane z ostatniego wiersza (Etap jest w kolumnie A, ID wiadomości w E)
     var row = sheet.getRange(lastRow, 1, 1, 5).getValues()[0];
     var etap = parseInt(row[0]) || 1;
-    
+
     // --- POPRAWKA DATY (zawsze B2) ---
     var rawDate = sheet.getRange(2, 2).getValue();
     var data_smierci = "";
 
     if (!rawDate || rawDate.toString().trim() === "" || rawDate.toString().trim() === "nieznanego dnia") {
-      // Jeśli pusto, generujemy nową datę funkcją pomocniczą
       data_smierci = (typeof _getDataSmierci === "function") ? _getDataSmierci() : "niedawno";
       sheet.getRange(2, 2).setValue(data_smierci);
       console.log("Uzupełniono datę w B2: " + data_smierci);
     } else if (rawDate instanceof Date) {
-      // Jeśli to obiekt daty, formatujemy na dd.MM.yyyy
       data_smierci = Utilities.formatDate(rawDate, "GMT+1", "dd.MM.yyyy");
     } else {
-      // Jeśli to już tekst, czyścimy ze spacji
       data_smierci = rawDate.toString().trim();
     }
     // --- KONIEC POPRAWKI DATY ---
@@ -360,10 +356,10 @@ function _createSmircSheetForEmail(senderEmail, dataSmierciFallback) {
       console.warn("Brak SMIERC_HISTORY_SHEET_ID - nie można utworzyć arkusza");
       return false;
     }
-    
+
     var ss = SpreadsheetApp.openById(sheetId);
     var sheetNameForEmail = senderEmail.replace("@", "_").replace(/\./g, "_");
-    
+
     var sheets = ss.getSheets();
     for (var i = 0; i < sheets.length; i++) {
       if (sheets[i].getName().toLowerCase().trim() === sheetNameForEmail.toLowerCase().trim()) {
@@ -372,24 +368,24 @@ function _createSmircSheetForEmail(senderEmail, dataSmierciFallback) {
         return true;
       }
     }
-    
+
     var dataSmierci = (dataSmierciFallback && dataSmierciFallback !== "nieznanego dnia")
       ? dataSmierciFallback
       : _getDataSmierci();
 
     var newSheet = ss.insertSheet(sheetNameForEmail);
-    
+
     newSheet.getRange(1, 1, 1, 5).setValues([[
       "nr_etapu", "data_smierci", "mail_od_osoby", "odpowiedz_pawla", "last_msg_id"
     ]]);
-    
+
     newSheet.getRange(2, 1, 1, 5).setValues([[
       1, dataSmierci, "", "", ""
     ]]);
-    
+
     console.log("Utworzono nowy arkusz SMIERC dla: " + senderEmail + " data=" + dataSmierci);
     return true;
-    
+
   } catch(e) {
     console.error("Błąd tworzenia arkusza SMIERC: " + e.message);
     return false;
@@ -477,6 +473,7 @@ function executeMailSend(data, recipient, subject, msg, senderName) {
   var inlineImages = {};
   var attachments  = [];
 
+  // ── Emotka PNG (inline w treści emaila) ────────────────────────────────────
   if (data.emoticon && data.emoticon.base64) {
     try {
       inlineImages["emotka_cid"] = Utilities.newBlob(
@@ -484,8 +481,12 @@ function executeMailSend(data, recipient, subject, msg, senderName) {
         data.emoticon.content_type || "image/png",
         data.emoticon.filename     || "emotka.png"
       );
-    } catch (e) { console.error("Błąd obrazka: " + e.message); }
+    } catch (e) {
+      console.error("[zwykly] Błąd emotki: " + e.message);
+    }
   }
+
+  // ── PDF emocji (załącznik) ──────────────────────────────────────────────────
   if (data.pdf && data.pdf.base64) {
     try {
       attachments.push(Utilities.newBlob(
@@ -493,10 +494,60 @@ function executeMailSend(data, recipient, subject, msg, senderName) {
         "application/pdf",
         data.pdf.filename || "dokument.pdf"
       ));
-    } catch (e) { console.error("Błąd PDF: " + e.message); }
+    } catch (e) {
+      console.error("[zwykly] Błąd PDF: " + e.message);
+    }
   }
 
-  var htmlBody = data.reply_html || "<p>(Brak treści)</p>";
+  // ── Tryptyk JPG (3 panele Fight Club) — inline + załącznik ─────────────────
+  var triptychHtml   = "";
+  var triptychImages = data.triptych || [];
+
+  if (triptychImages.length > 0) {
+    triptychHtml += '<hr style="border:none;border-top:2px solid #C8B89A;margin:28px 0 16px;">';
+    triptychHtml += '<p style="font-size:11px;color:#888;margin:0 0 10px;text-align:center;letter-spacing:1px;">TYLER DURDEN — TRYPTYK</p>';
+    triptychHtml += '<table cellpadding="0" cellspacing="6" style="margin:0 auto;"><tr>';
+
+    triptychImages.forEach(function(imgObj, index) {
+      if (!imgObj || !imgObj.base64) return;
+      try {
+        var cid      = "tyler_panel_" + index;
+        var filename = imgObj.filename || ("tyler_panel_" + index + ".jpg");
+        var mime     = imgObj.content_type || "image/jpeg";
+
+        var blobInline = Utilities.newBlob(
+          Utilities.base64Decode(imgObj.base64), mime, filename
+        );
+        var blobAttach = Utilities.newBlob(
+          Utilities.base64Decode(imgObj.base64), mime, filename
+        );
+
+        inlineImages[cid] = blobInline;
+        attachments.push(blobAttach);
+
+        triptychHtml +=
+          '<td valign="top" style="text-align:center;padding:2px;">' +
+            '<img src="cid:' + cid + '" alt="Panel ' + (index + 1) + '"' +
+            ' style="max-width:185px;border-radius:4px;border:1px solid #C8B89A;">' +
+          '</td>';
+
+        console.log("[zwykly] Panel " + (index + 1) + ": " + filename +
+                    " (" + (imgObj.size_jpg || "?") + ")");
+      } catch (e) {
+        console.error("[zwykly] Błąd panelu " + index + ": " + e.message);
+      }
+    });
+
+    triptychHtml += '</tr></table>';
+
+    // ── Zapisz JPG na Google Drive (DRIVE_FOLDER_ID) ────────────────────────
+    _saveTylerJpgsToDrive(triptychImages);
+  }
+
+  // ── Złóż HTML ──────────────────────────────────────────────────────────────
+  var htmlBody = (data.reply_html || "<p>(Brak treści)</p>") + triptychHtml;
+
+  // ── Wyślij ─────────────────────────────────────────────────────────────────
   try {
     msg.reply("", {
       htmlBody:     htmlBody,
@@ -504,18 +555,26 @@ function executeMailSend(data, recipient, subject, msg, senderName) {
       attachments:  attachments,
       name:         senderName
     });
-    console.log("Wysłano: " + senderName + " -> " + recipient);
+    console.log("[zwykly] Wysłano: " + senderName + " → " + recipient +
+                " | panels=" + triptychImages.length +
+                " | attachments=" + attachments.length);
   } catch (e) {
-    MailApp.sendEmail({
-      to:           recipient,
-      subject:      "RE: " + subject,
-      htmlBody:     htmlBody,
-      inlineImages: inlineImages,
-      attachments:  attachments,
-      name:         senderName
-    });
+    try {
+      MailApp.sendEmail({
+        to:           recipient,
+        subject:      "RE: " + subject,
+        htmlBody:     htmlBody,
+        inlineImages: inlineImages,
+        attachments:  attachments,
+        name:         senderName
+      });
+      console.log("[zwykly] sendEmail() fallback OK → " + recipient);
+    } catch (e2) {
+      console.error("[zwykly] sendEmail() też zawiódł: " + e2.message);
+    }
   }
 }
+
 
 function executeGeneratorPdfMailSend(data, recipient, subject, msg) {
   if (!data) {
@@ -556,10 +615,7 @@ function executeGeneratorPdfMailSend(data, recipient, subject, msg) {
     });
   }
 }
-// ZNAJDŹ:
 
-
-// ZAMIEŃ NA:
 function _saveJpgsToDrive(images) {
   try {
     var folderId = PropertiesService.getScriptProperties().getProperty("DRIVE_FOLDER_ID");
@@ -585,6 +641,40 @@ function _saveJpgsToDrive(images) {
     console.error("[Drive] Błąd zapisu: " + e.message);
   }
 }
+function _saveTylerJpgsToDrive(images) {
+  try {
+    var folderId = PropertiesService.getScriptProperties().getProperty("DRIVE_FOLDER_ID");
+    if (!folderId) {
+      console.warn("[Drive-Tyler] Brak DRIVE_FOLDER_ID w Script Properties");
+      return;
+    }
+    var folder = DriveApp.getFolderById(folderId);
+    if (!images || !images.length) return;
+
+    images.forEach(function(imgObj) {
+      if (!imgObj || !imgObj.base64) return;
+
+      var name = imgObj.filename || "tyler_panel.jpg";
+      var nameLower = name.toLowerCase();
+      if (!nameLower.endsWith(".jpg") && !nameLower.endsWith(".jpeg")) {
+        console.warn("[Drive-Tyler] Pominięto (nie JPG): " + name);
+        return;
+      }
+
+      var blob = Utilities.newBlob(
+        Utilities.base64Decode(imgObj.base64),
+        "image/jpeg",
+        name
+      );
+      folder.createFile(blob);
+      console.log("[Drive-Tyler] Zapisano: " + name +
+                  " (" + (imgObj.size_jpg || "?") + ")");
+    });
+
+  } catch(e) {
+    console.error("[Drive-Tyler] Błąd zapisu: " + e.message);
+  }
+}
 
 function executeSmircMailSend(data, recipient, subject, msg, newEtap) {
   if (!data) {
@@ -596,7 +686,6 @@ function executeSmircMailSend(data, recipient, subject, msg, newEtap) {
   var inlineImages = {};
   var imagesHtml   = "";
 
-  // 1. OBRAZY — POPRAWKA: teraz dodajemy do attachments!
   if (data.images && Array.isArray(data.images)) {
     data.images.forEach(function(imgObj, index) {
       try {
@@ -608,7 +697,6 @@ function executeSmircMailSend(data, recipient, subject, msg, newEtap) {
             imgObj.filename || ("obraz_" + index + ".png")
           );
           inlineImages[cid] = imgBlob;
-          // ✅ POPRAWKA: Teraz DODAJEMY do attachments!
           attachments.push(imgBlob);
           imagesHtml += '<p><img src="cid:' + cid + '" alt="Zaswiety" style="max-width:100%;border-radius:8px;margin-bottom:10px;"></p>';
         }
@@ -618,7 +706,6 @@ function executeSmircMailSend(data, recipient, subject, msg, newEtap) {
     });
   }
 
-  // 2. WIDEO i inne zalaczniki
   if (data.videos && Array.isArray(data.videos)) {
     data.videos.forEach(function(vidObj, index) {
       try {
@@ -635,7 +722,6 @@ function executeSmircMailSend(data, recipient, subject, msg, newEtap) {
     });
   }
 
-  // 3. DEBUG TXT
   if (data.debug_txt && data.debug_txt.base64) {
     try {
       attachments.push(Utilities.newBlob(
@@ -648,10 +734,8 @@ function executeSmircMailSend(data, recipient, subject, msg, newEtap) {
     }
   }
 
-  // HTML opakowany w div — Gmail nie ignoruje cid
   var htmlBody = "<div>" + (data.reply_html || "<p>(Brak tresci)</p>") + imagesHtml + "</div>";
 
-  // 4. Wysylka z fallbackiem
   try {
     msg.reply("", {
       htmlBody:     htmlBody,
@@ -988,7 +1072,7 @@ function executeObrazekMailSend(data, recipient, subject, msg) {
     }
   }
 }
-// ── Wysyłka: nawiązanie do poprzedniej wiadomości ────────────────────────────────────────────────────────
+
 function executeNawiazanieMailSend(data, recipient, subject, msg) {
   if (!data || !data.has_history || !data.reply_html) {
     return;
@@ -1080,6 +1164,7 @@ function _stripQuotedText(body) {
   }
   return result.join("\n").trim();
 }
+
 // ── GŁÓWNA FUNKCJA ────────────────────────────────────────────────────────────
 function __AAA_processEmails() {
   var props = PropertiesService.getScriptProperties();
@@ -1126,52 +1211,79 @@ function __AAA_processEmails() {
 
     var searchText = plainBody + " " + subject;
 
+    // ── POPRAWKA v6: isBiz / isAllowed / isKnownSender obliczamy PRZED
+    //    blokiem RE:/FWD: żeby były dostępne w obu gałęziach ─────────────────
+    var isBiz         = BIZ_LIST.indexOf(fromEmail) !== -1;
+    var isAllowed     = ALLOWED_LIST.indexOf(fromEmail) !== -1;
+    var isKnownSender = knownSenders.indexOf(fromEmail) !== -1;
+    // ─────────────────────────────────────────────────────────────────────────
+
     var isNewMsg = _isNewMessage(subject);
     console.log("DEBUG: isNewMessage=" + isNewMsg + " subject=" + subject);
-    
+
     // ── ODPOWIEDŹ (RE:/FWD:) ─────────────────────────────────────────────────
     if (!isNewMsg) {
       console.log("To odpowiedź (RE:/FWD:), ignoruję słowa kluczowe dla: " + fromEmail);
-      
+
       var smircDataForReply = _getSmircData(fromEmail);
       if (smircDataForReply) {
         console.log("Odpowiedź od osoby w SMIERC: " + fromEmail + " etap=" + smircDataForReply.etap);
-        
-        // ▼▼▼ ZMIANA: markRead PRZED wywołaniem backendu ▼▼▼
+
         thread.markRead();
 
-        var previousData = findLastMessageBySender(fromEmail);
-        var response = _callBackend(
+        var previousDataReply = findLastMessageBySender(fromEmail);
+        var responseReply = _callBackend(
           fromEmail, senderName, subject, plainBody, webhookUrl,
           false, false, false, false, false,
           true, smircDataForReply,
-          [], previousData ? previousData.body : null, previousData ? previousData.subject : null,
-          false, false, false, false
+          [],
+          previousDataReply ? previousDataReply.body    : null,
+          previousDataReply ? previousDataReply.subject : null,
+          isBiz, isAllowed, isKnownSender, false
         );
-        
-        if (response && response.json && response.json.smierc) {
-          var newEtap = response.json.smierc.nowy_etap || smircDataForReply.etap;
-          executeSmircMailSend(response.json.smierc, fromEmail, subject, msg, newEtap);
-          _updateSmircData(fromEmail, newEtap, plainBody, response.json.smierc.reply_html, msg.getId());
+
+        if (responseReply && responseReply.json && responseReply.json.smierc) {
+          var newEtapReply = responseReply.json.smierc.nowy_etap || smircDataForReply.etap;
+          executeSmircMailSend(responseReply.json.smierc, fromEmail, subject, msg, newEtapReply);
+          _updateSmircData(fromEmail, newEtapReply, plainBody, responseReply.json.smierc.reply_html, msg.getId());
         }
-        
+        // ── POPRAWKA v6: ALLOWED_LIST → wyślij też zwykły responder ──────────
+        if (isAllowed && responseReply && responseReply.json && responseReply.json.zwykly) {
+          executeMailSend(responseReply.json.zwykly, fromEmail, subject, msg, "Tyler Durden – Autoresponder");
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
         saveToHistory(fromEmail, subject, plainBody);
 
       } else {
-        var label = GmailApp.getUserLabelByName("processed");
-        if (!label) label = GmailApp.createLabel("processed");
-        thread.addLabel(label);
-        thread.markRead();
+        if (isAllowed) {
+          thread.markRead();
+          var previousDataAllowed = findLastMessageBySender(fromEmail);
+          var responseAllowed = _callBackend(
+            fromEmail, senderName, subject, plainBody, webhookUrl,
+            false, false, false, false, false,
+            false, null,
+            [],
+            previousDataAllowed ? previousDataAllowed.body    : null,
+            previousDataAllowed ? previousDataAllowed.subject : null,
+            isBiz, isAllowed, isKnownSender, false
+          );
+          if (responseAllowed && responseAllowed.json && responseAllowed.json.zwykly) {
+            executeMailSend(responseAllowed.json.zwykly, fromEmail, subject, msg, "Tyler Durden – Autoresponder");
+          }
+          saveToHistory(fromEmail, subject, plainBody);
+        } else {
+          var labelRe = GmailApp.getUserLabelByName("processed");
+          if (!labelRe) labelRe = GmailApp.createLabel("processed");
+          thread.addLabel(labelRe);
+          thread.markRead();
+        }
       }
-      
       continue;
     }
 
     // ── NOWA WIADOMOŚĆ ────────────────────────────────────────────────────────
-
-    var isBiz         = BIZ_LIST.indexOf(fromEmail) !== -1;
-    var isAllowed     = ALLOWED_LIST.indexOf(fromEmail) !== -1;
-    var isKnownSender = knownSenders.indexOf(fromEmail) !== -1;
+    // (isBiz, isAllowed, isKnownSender już obliczone wyżej)
 
     var isAllowedGeneratorPdf       = ALLOWED_LIST_GENERATOR_PDF.indexOf(fromEmail) !== -1;
     var containsKeywordGeneratorPdf = _containsAny(searchText, KEYWORDS_GENERATOR_PDF);
@@ -1207,7 +1319,6 @@ function __AAA_processEmails() {
       }
       wantsSmierc = true;
 
-      // ▼▼▼ ZMIANA: markRead PRZED wywołaniem backendu ▼▼▼
       thread.markRead();
 
       var previousDataJoker = findLastMessageBySender(fromEmail);
@@ -1248,31 +1359,37 @@ function __AAA_processEmails() {
       wantsSmierc = true;
       console.log("SMIERC kontynuacja dla: " + fromEmail + " etap=" + smircData.etap);
 
-      // ▼▼▼ ZMIANA: markRead PRZED wywołaniem backendu ▼▼▼
       thread.markRead();
 
-      // ✅ POPRAWKA: ZAWSZE pobierz świeżą datę z B2 (aby data była aktualna dla każdej wiadomości)
+      // Świeża data z B2
       smircData = _getSmircData(fromEmail);
-      
+
       var previousData2 = findLastMessageBySender(fromEmail);
       var response2 = _callBackend(
         fromEmail, senderName, subject, plainBody, webhookUrl,
         false, false, false, false, false,
         true, smircData,
-        [], previousData2 ? previousData2.body : null, previousData2 ? previousData2.subject : null,
-        false, false, false, false
+        [],
+        previousData2 ? previousData2.body    : null,
+        previousData2 ? previousData2.subject : null,
+        isBiz, isAllowed, isKnownSender, false
       );
-      
+
       if (response2 && response2.json && response2.json.smierc) {
         var newEtap2 = response2.json.smierc.nowy_etap || smircData.etap;
         executeSmircMailSend(response2.json.smierc, fromEmail, subject, msg, newEtap2);
         _updateSmircData(fromEmail, newEtap2, plainBody, response2.json.smierc.reply_html, msg.getId());
       }
-      
+      // ── POPRAWKA v6: ALLOWED_LIST → wyślij też zwykły responder ─────────────
+      if (isAllowed && response2 && response2.json && response2.json.zwykly) {
+        executeMailSend(response2.json.zwykly, fromEmail, subject, msg, "Tyler Durden – Autoresponder");
+      }
+      // ────────────────────────────────────────────────────────────────────────
+
       saveToHistory(fromEmail, subject, plainBody);
       continue;
     }
-    
+
     // ── SMIERC start (nowy keyword) ───────────────────────────────────────────
     if (containsKeywordSmierc) {
       var created = _createSmircSheetForEmail(fromEmail, DATA_SMIERCI);
@@ -1293,9 +1410,9 @@ function __AAA_processEmails() {
     if (!isBiz && !isAllowed && !isKnownSender && !containsKeyword &&
         !containsKeyword2 && !containsKeyword3 &&
         !containsKeyword4 && !containsKeywordObrazek && !wantsGeneratorPdf && !wantsSmierc) {
-      var label = GmailApp.getUserLabelByName("processed");
-      if (!label) label = GmailApp.createLabel("processed");
-      thread.addLabel(label);
+      var labelSkip = GmailApp.getUserLabelByName("processed");
+      if (!labelSkip) labelSkip = GmailApp.createLabel("processed");
+      thread.addLabel(labelSkip);
       thread.markRead();
       continue;
     }
@@ -1332,7 +1449,6 @@ function __AAA_processEmails() {
       smircData = { etap: 1, data_smierci: DATA_SMIERCI, historia: [] };
     }
 
-    // ▼▼▼ ZMIANA: markRead PRZED wywołaniem backendu ▼▼▼
     thread.markRead();
 
     var response = _callBackend(
