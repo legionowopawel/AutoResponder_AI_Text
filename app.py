@@ -116,8 +116,6 @@ def webhook():
     # wants_text_reply = True gdy email ma dostać zwykłą odpowiedź tekstową AI
     # (false gdy email jest TYLKO dla generator_pdf bez innych flag/list)
     wants_text_reply = bool(data.get("wants_text_reply", True))
-    
-
     wave1 = {}
     if wants_text_reply:
         wave1["zwykly"] = lambda: run(build_zwykly_section, body)
