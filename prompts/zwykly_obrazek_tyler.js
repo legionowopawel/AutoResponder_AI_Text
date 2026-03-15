@@ -1,15 +1,3 @@
-/**
- * zwykly_obrazek_tyler.js
- * Wytyczne stylu wizualnego dla tryptyku Tylera Durdena.
- * Czytane przez zwykly.py przy generowaniu promptów FLUX.
- *
- * Format: moduł CommonJS / plain object — Python czyta go przez json.loads()
- * po wyekstrahowaniu pola STYLE_CONFIG.
- * Eksportujemy obiekt jako JEDEN blok JSON umieszczony w znaczniku
- * // <STYLE_CONFIG> ... // </STYLE_CONFIG>
- * dzięki czemu Python może go wyciąć regexpem bez parsowania całego JS.
- */
-
 // <STYLE_CONFIG>
 {
   "actor": "Brad Pitt",
