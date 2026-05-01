@@ -3141,6 +3141,7 @@ def _generate_cv_photo(body: str, cv_data: dict, test_mode: bool = False) -> str
 def _build_cv_pdf(cv_data: dict, photo_b64: str | None) -> str | None:
     """
     Buduje PDF CV z reportlab z polskimi znakami (UTF-8).
+    Używa DejaVuSans z katalogu fonts/ projektu.
     Zdjęcie w prawym górnym rogu.
     Zwraca base64 PDF lub None przy błędzie.
     """
@@ -3157,6 +3158,8 @@ def _build_cv_pdf(cv_data: dict, photo_b64: str | None) -> str | None:
 
     FN, FB = _register_fonts()
     logger.info("[cv-pdf] Czcionki: FN=%s FB=%s", FN, FB)
+    if FN == "Helvetica":
+        logger.warning("[cv-pdf] Fallback na Helvetica — polskie znaki mogą nie działać! Sprawdź fonts/DejaVuSans.ttf")
 
     buf = io.BytesIO()
     W, H = A4
@@ -3169,88 +3172,57 @@ def _build_cv_pdf(cv_data: dict, photo_b64: str | None) -> str | None:
     RED = (0.7, 0.1, 0.1)
     WHITE = (1.0, 1.0, 1.0)
 
-    def set_color(rgb):
-        c.setFillColorRGB(*rgb)
-
-    def draw_text(txt, x, y, font=FN, size=10, color=BLACK, max_width=None):
-        set_color(color)
-        c.setFont(font, size)
-        effective_width = max_width if max_width is not None else col_width
-        if effective_width and effective_width < (right_margin - x):
-            # Zawijanie — zawsze tnij do szerokości strony
-            effective_width = min(effective_width, right_margin - x)
-        words = str(txt).split()
-        line = ""
-        lines = []
-        for w in words:
-            test = (line + " " + w).strip()
-            if c.stringWidth(test, font, size) <= effective_width:
-                line = test
-            else:
-                if line:
-                    lines.append(line)
-                line = w
-        if line:
-            lines.append(line)
-        for i, ln in enumerate(lines):
-            c.drawString(x, y - i * (size + 2), ln)
-        return len(lines) * (size + 2)
-
-    c.setFillColorRGB(*BLACK)
-    c.rect(0, H - 45 * mm, W, 45 * mm, fill=1, stroke=0)
-
-    imie = cv_data.get("imie_nazwisko", "Anonim Bezdomny")
-    set_color(WHITE)
-    c.setFont(FB, 22)
-    c.drawString(15 * mm, H - 20 * mm, imie)
-
-    tytul = cv_data.get("tytul_zawodowy", "")
-    set_color((0.8, 0.8, 0.8))
-    c.setFont(FN, 11)
-    c.drawString(15 * mm, H - 30 * mm, tytul)
-
-    email_str = cv_data.get("email", "")
-    tel_str = cv_data.get("telefon", "")
-    miasto = cv_data.get("miasto", "")
-    kontakt = " | ".join(filter(None, [email_str, tel_str, miasto]))
-    set_color((0.65, 0.65, 0.65))
-    c.setFont(FN, 9)
-    c.drawString(15 * mm, H - 39 * mm, kontakt)
-
-    if photo_b64:
-        try:
-            photo_bytes = base64.b64decode(photo_b64)
-            photo_reader = ImageReader(io.BytesIO(photo_bytes))
-            photo_size = 38 * mm
-            c.drawImage(
-                photo_reader,
-                W - photo_size - 10 * mm,
-                H - photo_size - 3.5 * mm,
-                width=photo_size,
-                height=photo_size,
-                preserveAspectRatio=True,
-                mask="auto",
-            )
-        except Exception as e:
-            logger.warning("[cv-pdf] Błąd wklejania zdjęcia: %s", e)
-
-    c.setStrokeColorRGB(*RED)
-    c.setLineWidth(2)
-    c.line(15 * mm, H - 48 * mm, W - 15 * mm, H - 48 * mm)
-
-    y = H - 58 * mm
     left_margin = 15 * mm
     right_margin = W - 15 * mm
-    # Jeśli jest zdjęcie, tekst nie może wchodzić pod zdjęcie w nagłówku
-    # Zdjęcie zajmuje 38mm + 10mm margines = 48mm od prawej krawędzi
-    photo_col_width = (
-        (W - (38 * mm + 10 * mm + 15 * mm)) - left_margin
-        if photo_b64
-        else (right_margin - left_margin)
-    )
-    col_width = right_margin - left_margin  # pełna szerokość dla sekcji pod nagłówkiem
+    col_width = right_margin - left_margin  # pełna szerokość treści
 
+    # ── POMOCNIK: zawijanie tekstu — zwraca nowe y ────────────────────────────
+    def wrap_draw(txt, x, y, font, size, color, max_w, line_gap=None, indent=0):
+        """
+        Rysuje tekst z zawijaniem. Zwraca y po ostatniej narysowanej linii.
+        max_w  — maksymalna szerokość w punktach
+        indent — wcięcie kolejnych linii (nie pierwszej)
+        line_gap — odstęp między liniami (domyślnie size * 1.4)
+        """
+        if not txt:
+            return y
+        gap = line_gap if line_gap is not None else size * 1.4
+        c.setFont(font, size)
+        c.setFillColorRGB(*color)
+        words = str(txt).split()
+        cur_line = ""
+        first = True
+        for w in words:
+            test = (cur_line + " " + w).strip()
+            if c.stringWidth(test, font, size) <= max_w:
+                cur_line = test
+            else:
+                if cur_line:
+                    draw_x = x if first else x + indent
+                    c.drawString(draw_x, y, cur_line)
+                    y -= gap
+                    y = _cpb(y)
+                    first = False
+                cur_line = w
+        if cur_line:
+            draw_x = x if first else x + indent
+            c.drawString(draw_x, y, cur_line)
+            y -= gap
+        return y
+
+    # ── POMOCNIK: page break ──────────────────────────────────────────────────
+    def _cpb(ypos, needed=15 * mm):
+        if ypos < needed:
+            c.showPage()
+            return H - 20 * mm
+        return ypos
+
+    def check_page_break(ypos, needed=20 * mm):
+        return _cpb(ypos, needed)
+
+    # ── POMOCNIK: nagłówek sekcji ─────────────────────────────────────────────
     def section_header(title, ypos):
+        ypos = check_page_break(ypos, 25 * mm)
         c.setFont(FB, 11)
         c.setFillColorRGB(*RED)
         c.drawString(left_margin, ypos, title.upper())
@@ -3259,98 +3231,227 @@ def _build_cv_pdf(cv_data: dict, photo_b64: str | None) -> str | None:
         c.line(left_margin, ypos - 2, right_margin, ypos - 2)
         return ypos - 8 * mm
 
-    def check_page_break(ypos, needed=20 * mm):
-        if ypos < needed:
-            c.showPage()
-            return H - 20 * mm
-        return ypos
+    # ═════════════════════════════════════════════════════════════════════════
+    # NAGŁÓWEK — czarne tło
+    # ═════════════════════════════════════════════════════════════════════════
+    PHOTO_SIZE = 38 * mm
+    PHOTO_MARGIN = 10 * mm  # margines zdjęcia od prawej krawędzi strony
+    PHOTO_X = W - PHOTO_SIZE - PHOTO_MARGIN
 
+    c.setFillColorRGB(*BLACK)
+    c.rect(0, H - 45 * mm, W, 45 * mm, fill=1, stroke=0)
+
+    # Szerokość tekstu w nagłówku — zostawiamy miejsce na zdjęcie gdy jest
+    header_text_max_w = (
+        (PHOTO_X - left_margin - 4 * mm) if photo_b64 else (right_margin - left_margin)
+    )
+
+    # Imię — duże, białe, zawijane
+    c.setFont(FB, 22)
+    c.setFillColorRGB(*WHITE)
+    imie = str(cv_data.get("imie_nazwisko", "Anonim Bezdomny"))
+    imie_words = imie.split()
+    imie_line = ""
+    imie_y = H - 20 * mm
+    for w in imie_words:
+        test = (imie_line + " " + w).strip()
+        if c.stringWidth(test, FB, 22) <= header_text_max_w:
+            imie_line = test
+        else:
+            c.drawString(left_margin, imie_y, imie_line)
+            imie_y -= 9 * mm
+            imie_line = w
+    if imie_line:
+        c.drawString(left_margin, imie_y, imie_line)
+
+    # Tytuł zawodowy — szary, zawijany
+    tytul = str(cv_data.get("tytul_zawodowy", ""))
+    c.setFont(FN, 10)
+    c.setFillColorRGB(0.8, 0.8, 0.8)
+    tytul_words = tytul.split()
+    tytul_line = ""
+    tytul_y = H - 30 * mm
+    for w in tytul_words:
+        test = (tytul_line + " " + w).strip()
+        if c.stringWidth(test, FN, 10) <= header_text_max_w:
+            tytul_line = test
+        else:
+            c.drawString(left_margin, tytul_y, tytul_line)
+            tytul_y -= 5 * mm
+            tytul_line = w
+    if tytul_line:
+        c.drawString(left_margin, tytul_y, tytul_line)
+
+    # Kontakt — mały, zawijany
+    email_str = str(cv_data.get("email", ""))
+    tel_str = str(cv_data.get("telefon", ""))
+    miasto_str = str(cv_data.get("miasto", ""))
+    kontakt = " | ".join(filter(None, [email_str, tel_str, miasto_str]))
+    c.setFont(FN, 8)
+    c.setFillColorRGB(0.65, 0.65, 0.65)
+    kontakt_words = kontakt.split()
+    kontakt_line = ""
+    kontakt_y = H - 39 * mm
+    for w in kontakt_words:
+        test = (kontakt_line + " " + w).strip()
+        if c.stringWidth(test, FN, 8) <= header_text_max_w:
+            kontakt_line = test
+        else:
+            c.drawString(left_margin, kontakt_y, kontakt_line)
+            kontakt_y -= 4 * mm
+            kontakt_line = w
+    if kontakt_line:
+        c.drawString(left_margin, kontakt_y, kontakt_line)
+
+    # Zdjęcie w prawym górnym rogu
+    if photo_b64:
+        try:
+            photo_bytes = base64.b64decode(photo_b64)
+            photo_reader = ImageReader(io.BytesIO(photo_bytes))
+            c.drawImage(
+                photo_reader,
+                PHOTO_X,
+                H - PHOTO_SIZE - 3.5 * mm,
+                width=PHOTO_SIZE,
+                height=PHOTO_SIZE,
+                preserveAspectRatio=True,
+                mask="auto",
+            )
+        except Exception as e:
+            logger.warning("[cv-pdf] Błąd wklejania zdjęcia: %s", e)
+
+    # Linia oddzielająca nagłówek
+    c.setStrokeColorRGB(*RED)
+    c.setLineWidth(2)
+    c.line(left_margin, H - 48 * mm, right_margin, H - 48 * mm)
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # TREŚĆ CV
+    # ═════════════════════════════════════════════════════════════════════════
+    y = H - 58 * mm
+
+    # ── PODSUMOWANIE ──────────────────────────────────────────────────────────
     podsumowanie = cv_data.get("podsumowanie", "")
     if podsumowanie:
         y = section_header("Podsumowanie zawodowe", y)
-        c.setFont(FN, 10)
-        c.setFillColorRGB(*DARK)
-        words = podsumowanie.split()
-        line = ""
-        for w in words:
-            test = (line + " " + w).strip()
-            if c.stringWidth(test, FN, 10) <= col_width:
-                line = test
-            else:
-                c.drawString(left_margin, y, line)
-                y -= 5 * mm
-                line = w
-                y = check_page_break(y)
-        if line:
-            c.drawString(left_margin, y, line)
-            y -= 5 * mm
+        y = wrap_draw(podsumowanie, left_margin, y, FN, 10, DARK, col_width, line_gap=5 * mm)
         y -= 3 * mm
 
+    # ── DOŚWIADCZENIE ─────────────────────────────────────────────────────────
     doswiadczenie = cv_data.get("doswiadczenie", [])
     if doswiadczenie:
         y = check_page_break(y, 40 * mm)
         y = section_header("Doświadczenie zawodowe", y)
         for job in doswiadczenie:
             y = check_page_break(y, 30 * mm)
-            firma = job.get("firma", "")
-            stanowisko = job.get("stanowisko", "")
-            okres = job.get("okres", "")
+            firma = str(job.get("firma", ""))
+            stanowisko = str(job.get("stanowisko", ""))
+            okres = str(job.get("okres", ""))
             obowiazki = job.get("obowiazki", [])
 
+            # Okres — po prawej, najpierw zmierz szerokość
+            c.setFont(FN, 9)
+            okres_w = c.stringWidth(okres, FN, 9)
+            firma_max_w = col_width - okres_w - 4 * mm
+
+            # Firma — pogrubiona, zawijana z uwzględnieniem szerokości okresu
             c.setFont(FB, 10)
             c.setFillColorRGB(*BLACK)
-            c.drawString(left_margin, y, firma)
-            c.setFont(FN, 10)
+            firma_words = firma.split()
+            firma_line = ""
+            firma_y = y
+            for w in firma_words:
+                test = (firma_line + " " + w).strip()
+                if c.stringWidth(test, FB, 10) <= firma_max_w:
+                    firma_line = test
+                else:
+                    c.drawString(left_margin, firma_y, firma_line)
+                    firma_y -= 5 * mm
+                    firma_y = _cpb(firma_y)
+                    firma_line = w
+            if firma_line:
+                c.drawString(left_margin, firma_y, firma_line)
+
+            # Okres — wyrównany do prawej, na tej samej linii co firma
+            c.setFont(FN, 9)
             c.setFillColorRGB(*GRAY)
             c.drawRightString(right_margin, y, okres)
-            y -= 5 * mm
+            y = firma_y - 5 * mm
 
-            c.setFont(FN, 10)
-            c.setFillColorRGB(*DARK)
-            c.drawString(left_margin + 2 * mm, y, stanowisko)
-            y -= 5 * mm
+            # Stanowisko — zawijane
+            y = wrap_draw(stanowisko, left_margin + 2 * mm, y, FN, 10, DARK, col_width - 2 * mm, line_gap=5 * mm)
 
+            # Obowiązki — z punktorami, zawijane
             c.setFont(FN, 9)
             c.setFillColorRGB(*DARK)
             for ob in obowiazki:
                 y = check_page_break(y)
-                words_ob = f"• {ob}".split()
-                line_ob = ""
-                for w in words_ob:
-                    test = (line_ob + " " + w).strip()
-                    if c.stringWidth(test, FN, 9) <= col_width - 4 * mm:
-                        line_ob = test
+                bullet_txt = f"• {ob}"
+                bullet_max_w = col_width - 6 * mm
+                ob_words = bullet_txt.split()
+                ob_line = ""
+                first_ob = True
+                for w in ob_words:
+                    test = (ob_line + " " + w).strip()
+                    if c.stringWidth(test, FN, 9) <= bullet_max_w:
+                        ob_line = test
                     else:
-                        if line_ob:
-                            c.drawString(left_margin + 4 * mm, y, line_ob)
+                        if ob_line:
+                            draw_x = left_margin + 4 * mm if not first_ob else left_margin + 4 * mm
+                            c.drawString(draw_x, y, ob_line)
                             y -= 4.5 * mm
-                            y = check_page_break(y)
-                        line_ob = w
-                if line_ob:
-                    c.drawString(left_margin + 4 * mm, y, line_ob)
+                            y = _cpb(y)
+                            first_ob = False
+                        ob_line = w
+                if ob_line:
+                    c.drawString(left_margin + 4 * mm, y, ob_line)
                     y -= 4.5 * mm
             y -= 3 * mm
 
+    # ── WYKSZTAŁCENIE ─────────────────────────────────────────────────────────
     wyksztalcenie = cv_data.get("wyksztalcenie", [])
     if wyksztalcenie:
         y = check_page_break(y, 25 * mm)
         y = section_header("Wykształcenie", y)
         for edu in wyksztalcenie:
-            uczelnia = edu.get("uczelnia", "")
-            kierunek = edu.get("kierunek", "")
-            rok = edu.get("rok", "")
+            uczelnia = str(edu.get("uczelnia", ""))
+            kierunek = str(edu.get("kierunek", ""))
+            rok = str(edu.get("rok", ""))
+
+            # Rok — po prawej
+            c.setFont(FN, 9)
+            rok_w = c.stringWidth(rok, FN, 9)
+            uczelnia_max_w = col_width - rok_w - 4 * mm
+
+            # Uczelnia — zawijana
             c.setFont(FB, 10)
             c.setFillColorRGB(*BLACK)
-            c.drawString(left_margin, y, uczelnia)
+            uczelnia_words = uczelnia.split()
+            uczelnia_line = ""
+            uczelnia_y = y
+            for w in uczelnia_words:
+                test = (uczelnia_line + " " + w).strip()
+                if c.stringWidth(test, FB, 10) <= uczelnia_max_w:
+                    uczelnia_line = test
+                else:
+                    c.drawString(left_margin, uczelnia_y, uczelnia_line)
+                    uczelnia_y -= 5 * mm
+                    uczelnia_y = _cpb(uczelnia_y)
+                    uczelnia_line = w
+            if uczelnia_line:
+                c.drawString(left_margin, uczelnia_y, uczelnia_line)
+
+            # Rok po prawej na pierwszej linii uczelni
             c.setFont(FN, 9)
             c.setFillColorRGB(*GRAY)
-            c.drawRightString(right_margin, y, str(rok))
-            y -= 5 * mm
-            c.setFont(FN, 10)
-            c.setFillColorRGB(*DARK)
-            c.drawString(left_margin + 2 * mm, y, kierunek)
-            y -= 7 * mm
+            c.drawRightString(right_margin, y, rok)
+            y = uczelnia_y - 5 * mm
 
+            # Kierunek — zawijany
+            y = wrap_draw(kierunek, left_margin + 2 * mm, y, FN, 10, DARK, col_width - 2 * mm, line_gap=5 * mm)
+            y -= 4 * mm
+
+    # ── UMIEJĘTNOŚCI — dwie kolumny z zawijaniem ──────────────────────────────
     umiejetnosci = cv_data.get("umiejetnosci", [])
     if umiejetnosci:
         y = check_page_break(y, 20 * mm)
@@ -3358,70 +3459,82 @@ def _build_cv_pdf(cv_data: dict, photo_b64: str | None) -> str | None:
         half = len(umiejetnosci) // 2 + len(umiejetnosci) % 2
         col1 = umiejetnosci[:half]
         col2 = umiejetnosci[half:]
-        col_w2 = col_width / 2
-        y_start = y
+        col_w2 = col_width / 2 - 4 * mm  # szerokość jednej kolumny (z marginesem)
+        line_h = 4.5 * mm
         c.setFont(FN, 9)
         c.setFillColorRGB(*DARK)
-        for i, um in enumerate(col1):
-            c.drawString(left_margin, y_start - i * 5 * mm, f"• {um}")
-        for i, um in enumerate(col2):
-            c.drawString(left_margin + col_w2, y_start - i * 5 * mm, f"• {um}")
-        y = y_start - max(len(col1), len(col2)) * 5 * mm - 3 * mm
+        y_start = y
+        y_col1 = y_start
+        y_col2 = y_start
 
+        for um in col1:
+            txt = f"• {um}"
+            um_words = txt.split()
+            um_line = ""
+            for w in um_words:
+                test = (um_line + " " + w).strip()
+                if c.stringWidth(test, FN, 9) <= col_w2:
+                    um_line = test
+                else:
+                    if um_line:
+                        c.drawString(left_margin, y_col1, um_line)
+                        y_col1 -= line_h
+                        y_col1 = _cpb(y_col1)
+                    um_line = w
+            if um_line:
+                c.drawString(left_margin, y_col1, um_line)
+                y_col1 -= line_h
+
+        for um in col2:
+            txt = f"• {um}"
+            um_words = txt.split()
+            um_line = ""
+            x2 = left_margin + col_width / 2
+            for w in um_words:
+                test = (um_line + " " + w).strip()
+                if c.stringWidth(test, FN, 9) <= col_w2:
+                    um_line = test
+                else:
+                    if um_line:
+                        c.drawString(x2, y_col2, um_line)
+                        y_col2 -= line_h
+                        y_col2 = _cpb(y_col2)
+                    um_line = w
+            if um_line:
+                c.drawString(x2, y_col2, um_line)
+                y_col2 -= line_h
+
+        y = min(y_col1, y_col2) - 3 * mm
+
+    # ── JĘZYKI — zawijane ─────────────────────────────────────────────────────
     jezyki = cv_data.get("jezyki", [])
     if jezyki:
         y = check_page_break(y, 15 * mm)
         y = section_header("Języki", y)
-        c.setFont(FN, 9)
         c.setFillColorRGB(*DARK)
         for j in jezyki:
-            c.drawString(left_margin, y, f"• {j}")
-            y -= 4.5 * mm
+            y = check_page_break(y)
+            y = wrap_draw(f"• {j}", left_margin, y, FN, 9, DARK, col_width, line_gap=4.5 * mm)
         y -= 3 * mm
 
+    # ── ZAINTERESOWANIA ───────────────────────────────────────────────────────
     zainteresowania = cv_data.get("zainteresowania", [])
     if zainteresowania:
         y = check_page_break(y, 15 * mm)
         y = section_header("Zainteresowania", y)
-        c.setFont(FN, 9)
-        c.setFillColorRGB(*DARK)
         line_z = " | ".join(zainteresowania)
-        words_z = line_z.split()
-        cur_z = ""
-        for w in words_z:
-            test = (cur_z + " " + w).strip()
-            if c.stringWidth(test, FN, 9) <= col_width:
-                cur_z = test
-            else:
-                c.drawCentredString(W / 2, y, f'"{cur_z}"')
-                y -= 4 * mm
-                cur_z = w
-        if cur_z:
-            c.drawCentredString(W / 2, y, f'"{cur_z}"')
+        y = wrap_draw(f'"{line_z}"', left_margin, y, FN, 9, DARK, col_width, line_gap=4 * mm)
+        y -= 3 * mm
 
-    # ── ŻYCIORYS ──────────────────────────────────────────────────────────────────
+    # ── ŻYCIORYS ──────────────────────────────────────────────────────────────
     zyciorys = cv_data.get("zyciorys", "")
     if zyciorys:
         y = check_page_break(y, 25 * mm)
         y = section_header("Życiorys", y)
-        c.setFont(FN, 10)
-        c.setFillColorRGB(*DARK)
-        safe_w = col_width - 4 * mm  # margines bezpieczeństwa dla polskich znaków
-        words = zyciorys.split()
-        line = ""
-        for w in words:
-            test = (line + " " + w).strip()
-            if c.stringWidth(test, FN, 10) <= safe_w:
-                line = test
-            else:
-                c.drawString(left_margin, y, line)
-                y -= 5 * mm
-                line = w
-                y = check_page_break(y)
-        if line:
-            c.drawString(left_margin, y, line)
-            y -= 8 * mm
+        y = wrap_draw(zyciorys, left_margin, y, FN, 10, DARK, col_width - 2 * mm, line_gap=5 * mm)
+        y -= 5 * mm
 
+    # ── CYTAT TYLERA ──────────────────────────────────────────────────────────
     cytat = cv_data.get("cytat_tylera", "")
     if cytat:
         y = check_page_break(y, 20 * mm)
@@ -3429,21 +3542,25 @@ def _build_cv_pdf(cv_data: dict, photo_b64: str | None) -> str | None:
         c.setLineWidth(0.5)
         c.line(left_margin, y + 3 * mm, right_margin, y + 3 * mm)
         y -= 3 * mm
+        # Zawijanie cytatu — każda linia wyśrodkowana
         c.setFont(FN, 8)
         c.setFillColorRGB(*RED)
-        safe_w8 = col_width - 4 * mm
-        words = cytat.split()
-        line = ""
-        for w in words:
-            test = (line + " " + w).strip()
-            if c.stringWidth(test, FN, 8) <= safe_w8:
-                line = test
+        cytat_words = cytat.split()
+        cytat_line = ""
+        cytat_max_w = col_width - 4 * mm
+        for w in cytat_words:
+            test = (cytat_line + " " + w).strip()
+            if c.stringWidth(f"— {test}", FN, 8) <= cytat_max_w:
+                cytat_line = test
             else:
-                c.drawCentredString(W / 2, y, f"— {line}")
-                y -= 4 * mm
-                line = w
-        if line:
-            c.drawString(left_margin, y, f"— {line}")
+                if cytat_line:
+                    c.drawCentredString(W / 2, y, f"— {cytat_line}")
+                    y -= 4 * mm
+                    y = _cpb(y)
+                cytat_line = w
+        if cytat_line:
+            c.drawCentredString(W / 2, y, f"— {cytat_line}")
+            y -= 4 * mm
 
     c.save()
     pdf_bytes = buf.getvalue()

@@ -442,6 +442,7 @@ def _sekcja_pacjent(cfg: dict, body: str, sender_name: str) -> dict:
             return _section_result(result, "fallback")
 
         # Walidacja: sprawdź czy mamy wszystkie kluczowe pola (nie tylko powod_przyjecia)
+        # Uwaga: dane_pacjenta może być zagnieżdżone — sprawdzamy OBA poziomy
         KLUCZOWE_POLA_PACJENTA = [
             "imie_nazwisko",
             "wiek",
@@ -450,13 +451,18 @@ def _sekcja_pacjent(cfg: dict, body: str, sender_name: str) -> dict:
             "stan_cywilny",
             "powod_przyjecia",
         ]
+        # Jeśli zagnieżdżone w dane_pacjenta — sprawdź tam
+        check_source = result
+        if isinstance(result, dict) and "dane_pacjenta" in result and isinstance(result.get("dane_pacjenta"), dict):
+            check_source = result["dane_pacjenta"]
         empty_count = (
-            count_empty_fields(result, KLUCZOWE_POLA_PACJENTA)
-            if isinstance(result, dict)
+            count_empty_fields(check_source, KLUCZOWE_POLA_PACJENTA)
+            if isinstance(check_source, dict)
             else len(KLUCZOWE_POLA_PACJENTA)
         )
 
-        if isinstance(result, dict) and empty_count >= 3:  # Zbyt dużo pól puste
+        # Retry TYLKO gdy wszystkie 6 pól puste — czyli AI zwróciło pustą odpowiedź
+        if isinstance(result, dict) and empty_count >= 6:
             current_app.logger.warning(
                 "[psych-raport] Sekcja pacjent: kryterium minimum nie spełnione (%d/%d puste) — retry",
                 empty_count,
@@ -486,8 +492,15 @@ def _sekcja_pacjent(cfg: dict, body: str, sender_name: str) -> dict:
                         result = result_retry
                     else:
                         current_app.logger.warning(
-                            "[psych-raport] Sekcja pacjent: retry nie poprawiło sytuacji"
+                            "[psych-raport] Sekcja pacjent: retry nie poprawiło sytuacji — używam oryginału"
                         )
+                        # ZAWSZE używamy tego co mamy, nie blokujemy
+        elif isinstance(result, dict) and empty_count >= 3:
+            current_app.logger.info(
+                "[psych-raport] Sekcja pacjent: %d/%d pól puste — akceptuję (bez retry)",
+                empty_count,
+                len(KLUCZOWE_POLA_PACJENTA),
+            )
 
         # Obsługa listy zamiast dict — bierz pierwszy element jeśli to dict
         if isinstance(result, list):
@@ -686,21 +699,75 @@ def _sekcja_depozyt_leki(cfg: dict, body: str, nouns_dict: dict) -> dict:
 
     def _normalize_dep(result: dict) -> dict:
         """Normalizuje klucze słownika depozytu/farmakologii."""
+        # Mapowanie kluczy AI (ze schematu) → klucze wewnętrzne
         KEY_MAP = {
             "deposit": "depozyt",
+            # Depozyt — rzeczywiste klucze AI z schematu deepseek_2a
+            "lista_depozytowa": "lista_przedmiotow",     # AI zwraca lista_depozytowa
             "przedmioty": "lista_przedmiotow",
             "items": "lista_przedmiotow",
+            "protokol_podsumowanie": "protokol_depozytu", # AI zwraca protokol_podsumowanie
             "protokol": "protokol_depozytu",
             "protocol": "protokol_depozytu",
+            "podsumowanie": "protokol_depozytu",
+            # Farmakologia — rzeczywiste klucze AI z schematu deepseek_2b
             "leki": "leki",
             "drugs": "leki",
             "medications": "leki",
             "nota_farmaceutyczna": "nota_farmaceutyczna",
             "pharmacy_note": "nota_farmaceutyczna",
+            "nota": "nota_farmaceutyczna",
         }
         for wrong, right in KEY_MAP.items():
             if wrong in result and right not in result:
                 result[right] = result.pop(wrong)
+
+        # Normalizacja elementów listy_przedmiotow
+        # AI zwraca [{przedmiot, cecha_udziwniona, szkodliwosc_dla_pacjenta}]
+        # docx oczekuje stringów lub dictów z kluczem pozwalającym wyciągnąć tekst
+        lista = result.get("lista_przedmiotow", [])
+        if isinstance(lista, list):
+            normalized_lista = []
+            for item in lista:
+                if isinstance(item, dict):
+                    # Scal pola w jeden string czytelny dla docx
+                    przedmiot = item.get("przedmiot", "") or item.get("nazwa", "") or item.get("item", "")
+                    cecha = item.get("cecha_udziwniona", "") or item.get("cecha", "") or item.get("opis", "")
+                    szkod = item.get("szkodliwosc_dla_pacjenta", "") or item.get("szkodliwosc", "") or item.get("dlaczego_szkodzi", "")
+                    parts = [x for x in [przedmiot, cecha, szkod] if x and x != "__BRAK__"]
+                    if parts:
+                        normalized_lista.append(" — ".join(parts))
+                elif isinstance(item, str) and item.strip() and item != "__BRAK__":
+                    normalized_lista.append(item)
+            result["lista_przedmiotow"] = normalized_lista
+
+        # Normalizacja elementów leków
+        # AI zwraca [{nazwa_leku, wskazanie, dawkowanie}] — docx szuka {nazwa, wskazanie, dawkowanie}
+        leki = result.get("leki", [])
+        if isinstance(leki, list):
+            normalized_leki = []
+            for lek in leki:
+                if isinstance(lek, dict):
+                    normalized_lek = {}
+                    normalized_lek["nazwa"] = (
+                        lek.get("nazwa") or lek.get("nazwa_leku") or lek.get("name") or "__BRAK__"
+                    )
+                    normalized_lek["wskazanie"] = (
+                        lek.get("wskazanie") or lek.get("indication") or ""
+                    )
+                    normalized_lek["dawkowanie"] = (
+                        lek.get("dawkowanie") or lek.get("dosage") or ""
+                    )
+                    # rzeczownik_zrodlowy — może być w różnych kluczach
+                    normalized_lek["rzeczownik_zrodlowy"] = (
+                        lek.get("rzeczownik_zrodlowy") or lek.get("przedmiot_zrodlowy")
+                        or lek.get("source") or ""
+                    )
+                    normalized_leki.append(normalized_lek)
+                else:
+                    normalized_leki.append({"nazwa": str(lek), "wskazanie": "", "dawkowanie": "", "rzeczownik_zrodlowy": ""})
+            result["leki"] = normalized_leki
+
         return result
 
     merged = {}
@@ -1191,6 +1258,28 @@ def _sekcja_zalecenia(cfg: dict, body: str, dni_1_7: list, dni_8_14: list) -> di
             for wrong, right in KEY_MAP.items():
                 if wrong in result and right not in result:
                     result[right] = result.pop(wrong)
+
+            # Normalizacja notatek pielęgniarek — AI zwraca "imie" nie "imie_pielegniarki"
+            notatki_p = result.get("notatki_pielegniarek", [])
+            if isinstance(notatki_p, list):
+                for n in notatki_p:
+                    if isinstance(n, dict):
+                        if "imie" in n and "imie_pielegniarki" not in n:
+                            n["imie_pielegniarki"] = n.pop("imie")
+                        if "notatka" in n and "tresc" not in n:
+                            n["tresc"] = n.pop("notatka")
+                        if "content" in n and "tresc" not in n:
+                            n["tresc"] = n.pop("content")
+
+            # Normalizacja notatek sprzątaczki — AI zwraca "znalezisko" nie "tresc"
+            notatki_s = result.get("notatki_sprzataczki", [])
+            if isinstance(notatki_s, list):
+                for n in notatki_s:
+                    if isinstance(n, dict):
+                        if "znalezisko" in n and "tresc" not in n:
+                            n["tresc"] = n.pop("znalezisko")
+                        if "notatka" in n and "tresc" not in n:
+                            n["tresc"] = n.pop("notatka")
                     current_app.logger.info(
                         "[psych-raport] zalecenia: znormalizowano '%s' → '%s'",
                         wrong,
@@ -1470,6 +1559,8 @@ def _sekcja_relacje_swiadkow(cfg: dict, body: str, raport: dict) -> dict:
             return {"relacje_swiadkow": []}
 
         # Normalizacja kluczy w każdym świadku
+        # Schemat AI: {swiadek: "Imię i Zawód", przywara: "...", zeznanie: "..."}
+        # Docx oczekuje: {imie_swiadka, zawod, tresc, data}
         WITNESS_KEY_MAP = {
             "name": "imie_swiadka",
             "imie": "imie_swiadka",
@@ -1479,14 +1570,38 @@ def _sekcja_relacje_swiadkow(cfg: dict, body: str, raport: dict) -> dict:
             "date": "data",
             "statement": "tresc",
             "testimony": "tresc",
-            "zeznanie": "tresc",
+            "zeznanie": "tresc",      # klucz z schematu AI
             "content": "tresc",
         }
         for w in result:
             if isinstance(w, dict):
+                # Mapowanie prostych kluczy
                 for wrong, right in WITNESS_KEY_MAP.items():
                     if wrong in w and right not in w:
                         w[right] = w.pop(wrong)
+
+                # Klucz "swiadek" — AI zwraca "Imię i Zawód" jako jeden string
+                if "swiadek" in w and not w.get("imie_swiadka"):
+                    swiadek_str = str(w.pop("swiadek", ""))
+                    # Rozdziel imię od zawodu po " — " lub po przecinku lub zostaw jako imię
+                    if " — " in swiadek_str:
+                        parts = swiadek_str.split(" — ", 1)
+                        w["imie_swiadka"] = parts[0].strip()
+                        if not w.get("zawod"):
+                            w["zawod"] = parts[1].strip()
+                    elif ", " in swiadek_str:
+                        parts = swiadek_str.split(", ", 1)
+                        w["imie_swiadka"] = parts[0].strip()
+                        if not w.get("zawod"):
+                            w["zawod"] = parts[1].strip()
+                    else:
+                        w["imie_swiadka"] = swiadek_str
+
+                # Klucz "przywara" — dołącz do tresc jako kontekst charakteru świadka
+                if "przywara" in w:
+                    przywara = w.pop("przywara", "")
+                    if przywara and przywara != "__BRAK__" and not w.get("zawod"):
+                        w["zawod"] = przywara  # użyj jako opis świadka przy braku zawodu
 
         current_app.logger.info(
             "[psych-raport] Sekcja świadkowie OK (%d relacji)", len(result)
@@ -2338,8 +2453,28 @@ def _build_docx_inner(
         for inc in incydenty:
             if inc == "__BRAK__":
                 continue
-            p_inc = doc.add_paragraph(style="List Bullet")
-            p_inc.add_run(str(inc)).font.size = Pt(10)
+            if isinstance(inc, dict):
+                # Schema AI: {nr, tytul, opis}
+                nr = inc.get("nr", "") or inc.get("number", "")
+                tytul = inc.get("tytul", "") or inc.get("title", "") or inc.get("tytuł", "")
+                opis = inc.get("opis", "") or inc.get("description", "") or inc.get("tresc", "")
+                # Nagłówek incydentu
+                header = " | ".join(x for x in [str(nr), tytul] if x and str(x) != "__BRAK__")
+                if header:
+                    p_inc = doc.add_paragraph(style="List Bullet")
+                    r_inc = p_inc.add_run(header)
+                    r_inc.bold = True
+                    r_inc.font.size = Pt(10)
+                    r_inc.font.color.rgb = RED
+                if opis and opis != "__BRAK__":
+                    p_opis = doc.add_paragraph()
+                    p_opis.paragraph_format.left_indent = Pt(24)
+                    r_opis = p_opis.add_run(str(opis))
+                    r_opis.font.size = Pt(9)
+                    r_opis.font.color.rgb = DARK
+            else:
+                p_inc = doc.add_paragraph(style="List Bullet")
+                p_inc.add_run(str(inc)).font.size = Pt(10)
         doc.add_paragraph()
         separator()
 
@@ -2403,9 +2538,10 @@ def _build_docx_inner(
         if isinstance(notatki_p, list):
             for n in notatki_p:
                 if isinstance(n, dict):
-                    imie = n.get("imie_pielegniarki", "")
+                    # AI zwraca "imie" nie "imie_pielegniarki" — obsłuż oba
+                    imie = n.get("imie_pielegniarki") or n.get("imie") or n.get("name") or ""
                     data = n.get("data", "")
-                    tresc = n.get("tresc", "")
+                    tresc = n.get("tresc") or n.get("notatka") or n.get("content") or ""
                     if tresc == "__BRAK__":
                         continue
                     header_parts = [x for x in [imie, data] if x and x != "__BRAK__"]
@@ -2432,7 +2568,8 @@ def _build_docx_inner(
             for n in notatki_s:
                 if isinstance(n, dict):
                     data = n.get("data", "")
-                    tresc = n.get("tresc", "")
+                    # AI zwraca "znalezisko" zamiast "tresc" — obsłuż oba
+                    tresc = n.get("tresc") or n.get("znalezisko") or n.get("notatka") or n.get("content") or ""
                     if tresc == "__BRAK__":
                         continue
                     if data and data != "__BRAK__":
