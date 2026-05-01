@@ -15,6 +15,9 @@ import time
 import requests
 from flask import current_app
 import logging
+import re
+
+
 
 from core.logging_reporter import get_logger
 
@@ -22,66 +25,41 @@ API_KEY_DEEPSEEK = os.getenv("API_KEY_DEEPSEEK")
 MODEL_BIZ = os.getenv("MODEL_BIZ", "deepseek-chat")
 MODEL_TYLER = os.getenv("MODEL_TYLER", "deepseek-chat")
 
-
 def sanitize_model_output(raw_text: str) -> str:
-    """Usuwa JSON-wrappery, zwraca czysty tekst odpowiedzi modelu."""
+    """
+    Naprawia JSON (Extra data, Expecting delimiter) i zwraca czysty tekst.
+    """
     if not raw_text:
         return ""
+    
+    import re
     txt = raw_text.strip()
 
-    if txt.startswith("{") or txt.startswith("["):
+    # 1. Próba wyciągnięcia czystego bloku JSON/Listy (Fix na 'Extra data')
+    match = re.search(r'(\{.*\}|\[.*\])', txt, re.DOTALL)
+    if match:
+        clean_text = match.group(1)
+        
+        # 2. Inteligentne domykanie klamer (Fix na 'Expecting delimiter' / ucięty tekst)
+        stack = []
+        for char in clean_text:
+            if char == '{': stack.append('}')
+            elif char == '[': stack.append(']')
+            elif char in '}]' and stack and char == stack[-1]:
+                stack.pop()
+        
+        final_str = clean_text + ''.join(reversed(stack))
+        
+        # 3. Weryfikacja czy to poprawny JSON
         try:
-            obj = json.loads(txt)
-            if isinstance(obj, dict):
-                for key in (
-                    "odpowiedz_tekstowa",
-                    "reply",
-                    "answer",
-                    "text",
-                    "message",
-                    "reply_html",
-                    "content",
-                ):
-                    if key in obj:
-                        val = obj[key]
-                        result = (
-                            val
-                            if isinstance(val, str)
-                            else json.dumps(val, ensure_ascii=False)
-                        )
-                        del obj
-                        return result
-                if len(obj) == 1:
-                    val = next(iter(obj.values()))
-                    result = (
-                        val
-                        if isinstance(val, str)
-                        else json.dumps(val, ensure_ascii=False)
-                    )
-                    del obj
-                    return result
-            if isinstance(obj, list):
-                result = "\n".join(str(x) for x in obj)
-                del obj
-                return result
-        except Exception:
-            pass
+            json.loads(final_str)
+            return final_str # Zwracamy naprawiony JSON
+        except json.JSONDecodeError:
+            pass # Jeśli nadal błąd, idziemy do klasycznej sanitizacji
 
-    if txt.startswith("{") and "}" in txt:
-        try:
-            end = txt.index("}") + 1
-            maybe_json = txt[:end]
-            remainder = txt[end:].strip()
-            try:
-                json.loads(maybe_json)
-                if remainder:
-                    return remainder
-            except Exception:
-                return txt[end:].strip()
-        except Exception:
-            pass
-
-    return raw_text
+    # Fallback: Jeśli to nie JSON, usuwamy tagi markdown (np. ```json)
+    txt = re.sub(r"```json|```", "", txt).strip()
+    return txt
 
 
 def extract_clean_text(text: str) -> str:
