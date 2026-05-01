@@ -114,6 +114,8 @@ def _generuj_wszystkie_metody(
     if metody_def:
         metody_txt = "\n### OPISY METOD:\n"
         for m in metody_def:
+            if not isinstance(m, dict):
+                continue
             metody_txt += (
                 f"- [{m.get('id', '?')}] {m.get('nazwa', '')} ({m.get('id_key', m.get('id', ''))}): "
                 f"{m.get('opis', '')} "
@@ -176,6 +178,8 @@ def _generuj_jedna_metoda(
     metody_def = prompt_data.get("metody_pocieszenia", [])
     opis_metody = ""
     for m in metody_def:
+        if not isinstance(m, dict):
+            continue
         if (
             m.get("id_key", m.get("id", "")) == metoda_key
             or m.get("nazwa", "").lower().replace(" ", "_") == metoda_key
