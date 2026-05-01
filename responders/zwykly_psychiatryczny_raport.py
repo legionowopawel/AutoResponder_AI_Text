@@ -1965,7 +1965,19 @@ def _build_docx_inner(
         )
     elif isinstance(cytaty, list):
         for c in cytaty:
-            if c and str(c).strip() not in ("", "__BRAK__"):
+            if isinstance(c, dict):
+                # Format: {cytat: "...", nota: "..."}
+                cytat_txt = (
+                    c.get("cytat") or c.get("text") or c.get("tresc") or c.get("quote") or ""
+                )
+                nota_txt = (
+                    c.get("nota") or c.get("komentarz") or c.get("comment") or c.get("note") or ""
+                )
+                if cytat_txt and str(cytat_txt).strip() not in ("", "__BRAK__"):
+                    para(u"\u201e" + str(cytat_txt) + u"\u201d", italic=True, color=GREY, size=9)
+                if nota_txt and str(nota_txt).strip() not in ("", "__BRAK__"):
+                    para(f"↳ {nota_txt}", italic=False, color=LGREY, size=8)
+            elif c and str(c).strip() not in ("", "__BRAK__"):
                 para(str(c), italic=True, color=GREY, size=9)
     else:
         para(str(cytaty), italic=True, color=GREY, size=9)
@@ -2191,10 +2203,10 @@ def _build_docx_inner(
     heading("VIII. DIAGNOZA PSYCHIATRYCZNA", 2, RED, 11)
 
     dw = raport.get("diagnoza_wstepna", {})
-    if isinstance(dw, dict):
+    if isinstance(dw, dict) and (dw.get("nazwa_lacinska") or dw.get("opis_kliniczny") or dw.get("nazwa_polska")):
         heading("Diagnoza Wstępna:", 3, DARK, 10)
         p_diag = doc.add_paragraph()
-        r1 = p_diag.add_run(dw.get("nazwa_lacinska", ""))
+        r1 = p_diag.add_run(dw.get("nazwa_lacinska", "") or "")
         r1.bold = True
         r1.font.size = Pt(11)
         r1.font.color.rgb = RED
@@ -2209,10 +2221,10 @@ def _build_docx_inner(
     doc.add_paragraph()
 
     dd = raport.get("diagnoza_dodatkowa", {})
-    if isinstance(dd, dict):
+    if isinstance(dd, dict) and (dd.get("nazwa_lacinska") or dd.get("opis_kliniczny") or dd.get("nazwa_polska")):
         heading("Diagnoza Dodatkowa:", 3, DARK, 10)
         p_dd = doc.add_paragraph()
-        r1 = p_dd.add_run(dd.get("nazwa_lacinska", ""))
+        r1 = p_dd.add_run(dd.get("nazwa_lacinska", "") or "")
         r1.bold = True
         r1.font.size = Pt(11)
         r1.font.color.rgb = RED
@@ -2225,10 +2237,10 @@ def _build_docx_inner(
     doc.add_paragraph()
 
     cw = raport.get("choroba_wspolistniejaca", {})
-    if isinstance(cw, dict):
+    if isinstance(cw, dict) and (cw.get("nazwa_lacinska") or cw.get("opis_kliniczny") or cw.get("nazwa_polska")):
         heading("Choroba Współistniejąca:", 3, DARK, 10)
         p_cw = doc.add_paragraph()
-        r1 = p_cw.add_run(cw.get("nazwa_lacinska", ""))
+        r1 = p_cw.add_run(cw.get("nazwa_lacinska", "") or "")
         r1.bold = True
         r1.font.size = Pt(11)
         r1.font.color.rgb = RED
@@ -2275,9 +2287,14 @@ def _build_docx_inner(
     elif isinstance(zt, dict):
         if zt.get("naglowek"):
             para(zt["naglowek"], bold=True, color=RED, size=10)
-        for zadanie_key in ("zadanie_1", "zadanie_2", "zadanie_3"):
+        # Obsłuż dowolną liczbę zadań (zadanie_1, zadanie_2, ...) dynamicznie
+        zadanie_keys = sorted([k for k in zt if k.startswith("zadanie_")])
+        if not zadanie_keys:
+            # Fallback: spróbuj innych możliwych kluczy
+            zadanie_keys = [k for k in zt if k not in ("naglowek", "podpis", "header", "signature")]
+        for zadanie_key in zadanie_keys:
             zadanie_val = zt.get(zadanie_key, "")
-            if zadanie_val and zadanie_val != "__BRAK__":
+            if zadanie_val and str(zadanie_val) != "__BRAK__":
                 p_z = doc.add_paragraph(style="List Number")
                 p_z.add_run(str(zadanie_val)).font.size = Pt(10)
         if zt.get("podpis"):
@@ -2290,11 +2307,19 @@ def _build_docx_inner(
     # SEKCJA 10 — ROKOWANIE
     # ══════════════════════════════════════════════════════════════════════════
     heading("X. ROKOWANIE", 2, RED, 11)
-    rokowanie = (
-        raport.get("rokowanie", "").strip()
-        if isinstance(raport.get("rokowanie"), str)
-        else ""
-    )
+    rokowanie_raw = raport.get("rokowanie")
+    if isinstance(rokowanie_raw, dict):
+        rokowanie = (
+            rokowanie_raw.get("opis_kliniczny")
+            or rokowanie_raw.get("tresc")
+            or rokowanie_raw.get("tekst")
+            or rokowanie_raw.get("opis")
+            or str(rokowanie_raw)
+        )
+    elif isinstance(rokowanie_raw, str):
+        rokowanie = rokowanie_raw.strip()
+    else:
+        rokowanie = ""
     if not rokowanie or rokowanie == "__BRAK__":
         rokowanie = "---brak---"
     p_rok = doc.add_paragraph()
@@ -2500,11 +2525,13 @@ def build_raport(
     sekcja_flux_data = _unwrap_section(sekcja_flux)
 
     # Wyznaczenie daty przyjęcia
-    data_przyjecia = sekcja_pacjent_data.get(
+    _spd = sekcja_pacjent_data if isinstance(sekcja_pacjent_data, dict) else {}
+    data_przyjecia = _spd.get(
         "data_przyjecia", datetime.now().strftime("%d.%m.%Y")
     )
     # BUGFIX: farmakologia może być stringiem gdy AI zwróci błędny typ — guard przed .get()
-    _farm_tmp = sekcja_dep_leki_data.get("farmakologia", {})
+    _sdld = sekcja_dep_leki_data if isinstance(sekcja_dep_leki_data, dict) else {}
+    _farm_tmp = _sdld.get("farmakologia", {})
     if not isinstance(_farm_tmp, dict):
         current_app.logger.warning(
             "[psych-raport] sekcja_dep_leki.farmakologia zły typ: %s — wartość: %.100s",
@@ -2580,7 +2607,7 @@ def build_raport(
     # Scalenie całości
     raport = {}
 
-    # ── dane_pacjenta: _sekcja_pacjent zwraca PŁASKI dict — opakowujemy
+    # ── dane_pacjenta: _sekcja_pacjent zwraca dict (może być zagnieżdżony lub płaski)
     PACJENT_FIELDS = {
         "imie_nazwisko",
         "wiek",
@@ -2600,26 +2627,32 @@ def build_raport(
     }
     if isinstance(sekcja_pacjent_data, dict):
         if _is_wrapped_section(sekcja_pacjent_data):
+            # Błąd lub fallback tekstowy — zapisz do raport jako placeholder
             raport["dane_pacjenta"] = sekcja_pacjent_data
             raport["powod_przyjecia"] = sekcja_pacjent_data
             raport["cytaty_z_przyjecia"] = sekcja_pacjent_data
         elif "dane_pacjenta" in sekcja_pacjent_data and isinstance(
             sekcja_pacjent_data["dane_pacjenta"], dict
         ):
+            # Zagnieżdżony schemat: {dane_pacjenta: {...}, powod_przyjecia: ..., cytaty_z_przyjecia: ...}
             raport["dane_pacjenta"] = sekcja_pacjent_data["dane_pacjenta"]
             for k, v in sekcja_pacjent_data.items():
                 if k != "dane_pacjenta":
                     raport[k] = v
         else:
-            # AI zwróciło płaski dict — zbieramy pola pacjenta
+            # Płaski dict — zbieramy pola pacjenta do dane_pacjenta
             dane_pac = {
                 k: v for k, v in sekcja_pacjent_data.items() if k in PACJENT_FIELDS
             }
-            # Zbieramy też top-level klucze raportu (numer, data, powód, cytaty)
+            # Zbieramy top-level klucze raportu
             for k, v in sekcja_pacjent_data.items():
                 if k in RAPORT_TOP_KEYS:
                     raport[k] = v
-            # Zabezpieczenie: dane_pacjenta MUSI być dict, nigdy stringiem
+            # Wszystkie pozostałe klucze też trafiają do raport
+            for k, v in sekcja_pacjent_data.items():
+                if k not in PACJENT_FIELDS and k not in RAPORT_TOP_KEYS:
+                    raport[k] = v
+            # Zabezpieczenie: dane_pacjenta MUSI być dict
             raport["dane_pacjenta"] = (
                 dane_pac
                 if dane_pac
@@ -2632,9 +2665,20 @@ def build_raport(
                     "numer_ubezpieczenia": "__BRAK__",
                 }
             )
-            for k, v in sekcja_pacjent_data.items():
-                if k not in PACJENT_FIELDS and k not in RAPORT_TOP_KEYS:
-                    raport[k] = v
+
+    # ── powod_przyjecia: jeśli jest __raw_text__ (fallback txt) — wyciągnij tekst
+    powod_v = raport.get("powod_przyjecia")
+    if isinstance(powod_v, dict) and "__raw_text__" in powod_v:
+        raport["powod_przyjecia"] = powod_v["__raw_text__"]
+    elif isinstance(powod_v, dict) and "__error__" in powod_v:
+        raport["powod_przyjecia"] = ""
+
+    # ── cytaty_z_przyjecia: jeśli __raw_text__ — wyciągnij tekst
+    cytaty_v = raport.get("cytaty_z_przyjecia")
+    if isinstance(cytaty_v, dict) and "__raw_text__" in cytaty_v:
+        raport["cytaty_z_przyjecia"] = cytaty_v["__raw_text__"]
+    elif isinstance(cytaty_v, dict) and "__error__" in cytaty_v:
+        raport["cytaty_z_przyjecia"] = []
 
     # ── depozyt i farmakologia
     if _is_wrapped_section(sekcja_dep_leki_data):
@@ -2698,8 +2742,34 @@ def build_raport(
                 if k not in WYPIS_FIELDS:
                     raport[k] = v
 
-    if _is_wrapped_section(sekcja_zalecenia_data):
+    # ── zalecenia: ustaw kluczowe pola z sekcja_zalecenia_data
+    if isinstance(sekcja_zalecenia_data, dict) and "__error__" not in sekcja_zalecenia_data and "__raw_text__" not in sekcja_zalecenia_data:
+        # zalecenia_tylera
+        zt_val = sekcja_zalecenia_data.get("zalecenia_tylera")
+        if zt_val is not None:
+            raport["zalecenia_tylera"] = zt_val
+        # rokowanie
+        rok_val = sekcja_zalecenia_data.get("rokowanie")
+        if rok_val is not None:
+            raport["rokowanie"] = rok_val
+        # incydenty_specjalne
+        inc_val = sekcja_zalecenia_data.get("incydenty_specjalne")
+        if inc_val is not None:
+            raport["incydenty_specjalne"] = inc_val
+        # notatki_pielegniarek / notatki_sprzataczki
+        for _nk in ("notatki_pielegniarek", "notatki_sprzataczki", "notatka_pielegniarki", "notatka_sprzataczki"):
+            _nv = sekcja_zalecenia_data.get(_nk)
+            if _nv is not None and not raport.get(_nk):
+                raport[_nk] = _nv
+    elif _is_wrapped_section(sekcja_zalecenia_data):
         raport["zalecenia_tylera"] = sekcja_zalecenia_data
+
+    # ── diagnozy: ustaw explicite z sekcja_diagnozy_data
+    if isinstance(sekcja_diagnozy_data, dict) and "__error__" not in sekcja_diagnozy_data and "__raw_text__" not in sekcja_diagnozy_data:
+        for _dk in ("diagnoza_wstepna", "diagnoza_dodatkowa", "choroba_wspolistniejaca", "objawy"):
+            _dv = sekcja_diagnozy_data.get(_dk)
+            if _dv is not None:
+                raport[_dk] = _dv
 
     # ── diagnozy i zalecenia: ochrona przed stringami zamiast dict
     DICT_KEYS = {
@@ -2847,8 +2917,8 @@ def build_raport(
             }
 
     # FLUX — zdjęcia równolegle
-    prompt_pacjent = sekcja_flux.get("prompt_pacjent", "")
-    prompt_przedmioty = sekcja_flux.get("prompt_przedmioty", "")
+    prompt_pacjent = sekcja_flux_data.get("prompt_pacjent", "") if isinstance(sekcja_flux_data, dict) else ""
+    prompt_przedmioty = sekcja_flux_data.get("prompt_przedmioty", "") if isinstance(sekcja_flux_data, dict) else ""
     photo_1, photo_2 = _generate_photos_parallel(
         prompt_pacjent, prompt_przedmioty, test_mode=test_mode
     )
