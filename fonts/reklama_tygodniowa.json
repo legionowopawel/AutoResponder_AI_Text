@@ -1,0 +1,55 @@
+{
+  "_komentarz": "Wytyczne do generowania tygodniowej reklamy jadłospisu. Używane przez core/reklama.py.",
+
+  "flux_prompt": {
+    "template": "Top-down view of a large wooden table. {n_men} bald men with long beards are sitting around the table eating meals from food containers. The men are dressed in construction work clothes — high-visibility vests, work jackets, dirty boots — except one man who wears a formal business suit. Each man eats from a rectangular black two-compartment plastic food container for the main dish, with round transparent plastic containers for soup and salad. On the table: {dish_list}. Photorealistic, warm natural light, restaurant food photography style, no text, no letters, no writing, no watermarks, no logos, no numbers.",
+    "negative_prompt": "text, letters, numbers, words, watermark, logo, signature, writing, captions, subtitles, labels, nsfw, blurry, low quality, cartoon, anime, drawing, illustration",
+    "width": 1344,
+    "height": 768,
+    "aspect": "landscape",
+    "num_inference_steps": 30,
+    "guidance_scale": 7.5,
+    "model": "black-forest-labs/FLUX.1-dev"
+  },
+
+  "kompozycja": {
+    "logo": {
+      "sciezka": "images/logo.png",
+      "pozycja": "top_center",
+      "margines_top_px": 20,
+      "szerokosc_max_px": 320,
+      "opis": "Logo z przezroczystością nakładane na górze na środku wygenerowanego obrazka."
+    },
+    "pasek_dolny": {
+      "wysokosc_procent_obrazka": 20,
+      "tlo": "#000000",
+      "tekst_kolor": "#FFFFFF",
+      "tekst_naglowek": "🍽️ W tym tygodniu polecamy:",
+      "naglowek_font_size": 28,
+      "naglowek_font_bold": true,
+      "zestaw_font_size": 20,
+      "zestaw_kolor_dzien": "#FFD700",
+      "zestaw_kolor_potrawy": "#FFFFFF",
+      "separator": " | ",
+      "margines_px": 24,
+      "opis": "Czarny pasek doklejony do dołu obrazka, rozszerzający go o 20%. Zawiera nagłówek i listę najzdrowszych zestawów dla każdego dnia."
+    },
+    "format_wyjsciowy": {
+      "typ": "JPG",
+      "jakosc": 92,
+      "opis": "Gotowy poziomy obrazek: oryginał FLUX (1344x768) + pasek dolny 20% = 1344x922 px."
+    }
+  },
+
+  "logika_zestawow": {
+    "zrodlo": "calorie_results[*].rekomendacja",
+    "format_linii": "{date_raw}: {zupa}  +  {danie_glowne}  +  {dodatki}",
+    "max_dni_w_pasku": 7,
+    "opis": "Dla każdego dnia pobiera rekomendację najzdrowszego zestawu z wyników calorie_report."
+  },
+
+  "warunki_aktywacji": {
+    "wymagane_tokeny_hf": true,
+    "opis": "Obrazek generowany tylko jeśli dostępne są tokeny Hugging Face (HF_API_TOKEN w env). Jeśli brak — pomijaj bez błędu."
+  }
+}

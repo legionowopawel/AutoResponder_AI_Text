@@ -1,0 +1,171 @@
+{
+  "_komentarz": "Konfiguracja generowania obrazka FLUX na podstawie treści emaila.",
+  "_wersja": "1.0",
+  "_uzycie": "Odczytywany przez zwykly.py w funkcji _generate_emotka_from_email(). Prompt budowany lokalnie bez AI — oszczędność tokena DeepSeek.",
+
+  "opis": "Obrazek zastępuje statyczną emotkę. Każdy nadawca dostaje unikalny obraz nawiązujący do jego wiadomości — wyobrażenie sytuacji, miejsca, emocji lub przyszłości wynikającej z listu.",
+
+  "zasady_generowania": {
+    "zakazy": [
+      "Żadnego tekstu, napisów, liter ani cyfr na obrazku",
+      "Żadnych postaci piszących, czytających lub trzymających telefon/laptop/papier",
+      "Żadnego pokazywania osoby przy komputerze lub biurku",
+      "Żadnych ekranów, monitów, klawiatur",
+      "Zakaz dosłownego przedstawiania treści emaila — tłumaczenie na nastrój, miejsce, symbol",
+      "Zakaz białych lub jednolitych teł bez faktury"
+    ],
+    "zalecenia": [
+      "Przedstawiaj miejsca, przestrzenie, obiekty, atmosferę — nie ludzi piszących",
+      "Wyobraź sobie nastrój lub konsekwencje emaila w formie wizualnej metafory",
+      "Możesz pokazywać wnętrza budynków, pejzaże, przedmioty, zjawiska atmosferyczne",
+      "Styl: fotorealistyczny, kinowy, dramatyczne oświetlenie, głębia ostrości",
+      "Preferuj obrazy które mogłyby być kadrami z dobrego filmu lub zdjęciami z wystawy"
+    ]
+  },
+
+  "parametry_hf": {
+    "num_inference_steps": 4,
+    "guidance_scale": 3.5,
+    "width": 768,
+    "height": 768,
+    "_komentarz_rozmiar": "Kwadratowy kadr — dobrze sprawdza się jako emotka/miniatura w mailu"
+  },
+
+  "parametry_obrazka": {
+    "format_wyjsciowy": "JPEG",
+    "jakosc_jpg": 92,
+    "zmniejsz_do_procent": 95,
+    "_komentarz": "PNG z FLUX → JPG 92% → zmniejszony o 5% — optymalny rozmiar do maila"
+  },
+
+  "budowanie_promptu": {
+    "opis": "Prompt składany lokalnie w Pythonie bez calla AI. Używa słów kluczowych z emaila + kontekstu emocjonalnego + stylu wizualnego.",
+
+    "struktura_promptu": [
+      "{SCENE_DESCRIPTION}",
+      "{OBJECTS_FROM_EMAIL}",
+      "{MOOD_PREFIX}",
+      "{VISUAL_STYLE}",
+      "{QUALITY_SUFFIX}"
+    ],
+
+    "scene_prefix_domyslny": "A cinematic scene evoking the atmosphere of",
+
+    "mood_prefix_mapa": {
+      "radosc":      "warm golden light, hopeful atmosphere,",
+      "smutek":      "overcast grey light, melancholic emptiness,",
+      "zlosc":       "harsh contrast, red tones, tension,",
+      "lek":         "deep shadows, unsettling silence, fog,",
+      "nuda":        "flat neutral light, monotony, stillness,",
+      "spokoj":      "soft diffused light, calm, serene,",
+      "neutralna":   "natural light, everyday atmosphere,",
+      "_domyslny":   "atmospheric light,"
+    },
+
+    "visual_style_warianty": [
+      "35mm film photography, shallow depth of field, cinematic color grading",
+      "medium format film, soft bokeh, editorial photography style",
+      "documentary photography, available light, honest and raw",
+      "cinematic still, anamorphic lens flare, muted earth tones",
+      "fine art photography, dramatic chiaroscuro lighting",
+      "architectural photography, clean lines, natural light",
+      "landscape photography, golden hour, atmospheric haze"
+    ],
+    "_komentarz_styl": "Jeden z wariantów wybierany losowo przy każdym wywołaniu — różnorodność między emailami",
+
+    "quality_suffix": "photorealistic, no text, no writing, no people at computers, highly detailed, professional photography",
+
+    "max_dlugosc_promptu": 400,
+    "_komentarz_dlugosc": "FLUX działa lepiej z krótszymi promptami — nie przekraczaj 400 znaków"
+  },
+
+  "ekstrakcja_kontekstu": {
+    "opis": "Jak Python ma wyciągnąć kontekst z emaila do budowania opisu sceny",
+
+    "miejsca": {
+      "opis": "Szukaj nazw miejsc, budynków, instytucji w treści emaila",
+      "przyklady_wykrytych": ["centrum Warszawy", "ośrodek psychoterapii", "biuro", "szpital", "szkoła", "park"],
+      "mapowanie_na_opis": {
+        "centrum": "urban city center, modern architecture, busy street",
+        "warszawa": "Warsaw city architecture, Vistula river, urban landscape",
+        "ośrodek": "quiet clinical interior, waiting room, soft natural light",
+        "psycho": "calm therapeutic space, minimalist interior, plants",
+        "szpital": "hospital corridor, clinical white light, sterile atmosphere",
+        "biuro": "empty office space, city view through window, late afternoon light",
+        "szkoła": "school hallway, lockers, afternoon sunlight through windows",
+        "park": "urban park, trees, paths, natural light",
+        "kawiarnia": "coffee shop interior, warm light, wooden surfaces",
+        "dom": "residential interior, personal space, warm evening light",
+        "_domyslny": "everyday Polish urban environment, natural light"
+      }
+    },
+
+    "tematy": {
+      "opis": "Słowa kluczowe z emaila mapowane na motywy wizualne",
+      "mapowanie": {
+        "badanie": "scientific research lab, microscopes, data visualization",
+        "praca": "workplace environment, tasks, professional setting",
+        "magisterska": "university library, books, academic atmosphere",
+        "psychologia": "calm therapeutic interior, symbolic objects, introspective mood",
+        "zaproszenie": "open door, pathway, welcoming light",
+        "spotkanie": "empty chairs, meeting space, anticipation",
+        "czas": "clock, hourglass, passing light through window",
+        "pieniądze": "financial district, empty bank vault, currency symbols",
+        "podróż": "train station, empty platform, luggage, departure",
+        "choroba": "hospital room, medical equipment, soft light",
+        "rodzina": "family home, shared spaces, personal objects",
+        "praca_magisterska": "library stacks, academic books, solitary study lamp",
+        "ochotnik": "empty volunteer sign-up sheet, open door, welcoming space",
+        "warsztat": "workshop space, tools arranged neatly, craftsmanship",
+        "projekt": "architectural blueprints, model on table, planning space",
+        "natura": "forest path, open field, sky and horizon",
+        "_domyslny": "symbolic everyday objects representing the email's theme"
+      }
+    },
+
+    "emocja_nadawcy": {
+      "opis": "Wyczuj emocję nadawcy z tonu emaila i wzmocnij ją w obrazku",
+      "wykrywanie": {
+        "uprzejmy_formalny": ["Dzień dobry", "Panie", "szanowny", "uprzejmie", "z poważaniem"],
+        "niepewny": ["zastanowił się", "jeżeli nie jest zainteresowany", "rozumiem", "może być"],
+        "pilny": ["pilnie", "jak najszybciej", "deadline", "termin"],
+        "entuzjastyczny": ["świetnie", "niesamowite", "fantastycznie", "chętnie"],
+        "smutny": ["niestety", "przykro", "żal", "trudno"]
+      },
+      "przeklad_na_nastroj": {
+        "uprzejmy_formalny": "formal, respectful atmosphere, clean and composed",
+        "niepewny": "soft uncertain light, open question, threshold moment",
+        "pilny": "dynamic tension, sharp contrasts, urgency",
+        "entuzjastyczny": "bright warm light, energy, movement",
+        "smutny": "quiet melancholy, muted tones, stillness"
+      }
+    }
+  },
+
+  "przyklady_promptow": {
+    "_opis": "Przykładowe prompty dla różnych typów emaili — do weryfikacji jakości",
+
+    "email_psychologia_badanie": {
+      "email_fragment": "badanie naukowe do pracy magisterskiej na kierunku psychologia, ośrodek psychoterapii PsychoCare, centrum Warszawy",
+      "wygenerowany_prompt": "A quiet therapeutic interior space, minimalist waiting room with soft natural light coming through tall windows, Warsaw urban architecture visible outside, calm and introspective atmosphere, plants and clean wooden furniture, 35mm film photography, shallow depth of field, cinematic color grading, photorealistic, no text, no people at computers, highly detailed"
+    },
+
+    "email_rekrutacja": {
+      "email_fragment": "oferta pracy, doświadczenie, branża IT, zdalnie",
+      "wygenerowany_prompt": "Empty modern office overlooking a city skyline at dusk, ergonomic chair at an unoccupied desk, laptop closed, city lights beginning to appear, ambiguous moment of decision, 35mm film photography, muted tones, cinematic atmosphere, photorealistic, no text, highly detailed"
+    },
+
+    "email_spoleczny": {
+      "email_fragment": "spotkanie znajomych, weekend, kawiarnia, centrum",
+      "wygenerowany_prompt": "Warm coffee shop interior, empty wooden table with two chairs, afternoon light slanting through large windows, steam rising from forgotten cups, anticipation of arrival, editorial photography style, soft bokeh, photorealistic, no text, no people at computers, highly detailed"
+    }
+  },
+
+  "fallback": {
+    "opis": "Używany gdy ekstrakcja kontekstu nie zwróci nic użytecznego",
+    "prompt": "A contemplative urban Polish landscape, quiet street in Warsaw, late afternoon autumn light, fallen leaves on wet pavement, sense of passing time and quiet reflection, 35mm film photography, muted earth tones, cinematic color grading, photorealistic, no text, no people at computers, highly detailed"
+  },
+
+  "panel_index": 96,
+  "_komentarz_panel": "Stały index 96 żeby nie kolidować z panelami tryptyku (1-7), zdjęciem CV (98) i surowym emailem (97)"
+}

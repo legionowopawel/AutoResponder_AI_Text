@@ -1,0 +1,38 @@
+Flask>=2.2.5
+gunicorn>=21.2.0
+requests>=2.31.0
+setuptools>=67.0.0
+python-dotenv>=1.0.0
+Pillow>=10.0.0
+python-docx>=1.1.0
+
+# Analiza emocjonalna + wykresy (emocje.py)
+numpy>=1.26.0
+matplotlib>=3.8.0
+pandas>=2.1.0
+snowballstemmer>=2.2.0
+
+# Obsługa PDF i dokumentów (analiza.py)
+pdfplumber>=0.10.0
+pypdf>=4.0.0
+docx2txt>=0.8
+lxml>=5.0.0
+cryptography>=42.0.0
+reportlab>=4.1.0
+openpyxl>=3.1.0
+
+# Monitorowanie systemu (logging_reporter.py)
+psutil>=5.9.0
+
+# Ankiety PDF
+fpdf2>=2.7.4
+
+# Google Drive / Sheets API
+google-api-python-client>=2.100.0
+google-auth>=2.20.0
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.2.0
+
+# JWT dla smtp_wysylka.py (Service Account)
+PyJWT>=2.8.0
+playwright>=1.44.0

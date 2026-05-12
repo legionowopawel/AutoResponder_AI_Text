@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CV — Interaktywne</title>
+<link href="https://fonts.googleapis.com/css2?family=Ubuntu+Mono:wght@400;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #ffffff;
+    --surface: #f7f5ff;
+    --surface2: #ede9fe;
+    --border: rgba(109,40,217,0.13);
+    --accent: #7c3aed;
+    --accent2: #a855f7;
+    --accent3: #5b21b6;
+    --text: #1a1a2e;
+    --muted: #6b7280;
+    --font-mono: 'Ubuntu Mono', monospace;
+    --font-body: 'Inter', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    overflow-x: hidden;
+    cursor: none;
+  }
+
+  /* DRAGON CANVAS */
+  #dragonCanvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* HERO */
+  #hero {
+    min-height: 100vh;
+    display: grid;
+    grid-template-rows: 1fr auto;
+    position: relative;
+    overflow: hidden;
+    padding: 48px 32px 32px;
+    background: #fff;
+  }
+
+  .hero-bg {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 50% 40% at 15% 40%, rgba(124,58,237,0.06) 0%, transparent 70%),
+      radial-gradient(ellipse 30% 30% at 85% 15%, rgba(168,85,247,0.04) 0%, transparent 60%);
+  }
+
+  .hero-grid-lines {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(109,40,217,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(109,40,217,0.04) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+
+  .hero-content {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 24px;
+    max-width: 820px;
+  }
+
+  .hero-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+    text-transform: uppercase;
+    opacity: 0;
+    animation: fadeUp 0.6s ease 0.2s forwards;
+  }
+
+  .hero-name-small {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.15em;
+    opacity: 0;
+    animation: fadeUp 0.6s ease 0.3s forwards;
+    line-height: 1.4;
+  }
+
+  .hero-name-big {
+    font-family: var(--font-body);
+    font-weight: 700;
+    font-size: clamp(28px, 5vw, 52px);
+    line-height: 1.1;
+    color: var(--text);
+    opacity: 0;
+    animation: fadeUp 0.8s ease 0.4s forwards;
+  }
+
+  .hero-name-big span { color: var(--accent); }
+
+  .hero-tagline {
+    font-size: clamp(13px, 1.8vw, 16px);
+    color: var(--muted);
+    font-weight: 400;
+    max-width: 500px;
+    line-height: 1.75;
+    opacity: 0;
+    animation: fadeUp 0.8s ease 0.6s forwards;
+  }
+
+  .hero-contacts {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    opacity: 0;
+    animation: fadeUp 0.8s ease 0.8s forwards;
+  }
+
+  .hero-contact {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+    padding-bottom: 2px;
+  }
+  .hero-contact:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* NAV CARDS */
+  .nav-cards {
+    position: relative; z-index: 2;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    opacity: 0;
+    animation: fadeUp 0.8s ease 1s forwards;
+  }
+
+  .nav-card {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    text-decoration: none;
+    color: inherit;
+  }
+  .nav-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--card-color, var(--accent));
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .nav-card:hover::before { opacity: 0.07; }
+  .nav-card:hover { border-color: var(--card-color, var(--accent)); transform: translateY(-3px); box-shadow: 0 8px 24px rgba(124,58,237,0.12); }
+
+  .card-icon { font-size: 20px; }
+  .card-title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 700;
+  }
+  .card-desc {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+    line-height: 1.3;
+  }
+  .card-arrow {
+    margin-top: auto;
+    font-size: 14px;
+    color: var(--card-color, var(--accent));
+    align-self: flex-end;
+  }
+
+  /* SECTIONS */
+  .section {
+    display: none;
+    min-height: 100vh;
+    padding: 64px 28px 48px;
+    position: relative;
+    background: #fff;
+    animation: sectionIn 0.4s ease forwards;
+  }
+  .section.active { display: block; }
+
+  @keyframes sectionIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .section-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    cursor: pointer;
+    border: none;
+    background: none;
+    margin-bottom: 40px;
+    transition: color 0.2s;
+    text-transform: uppercase;
+  }
+  .section-back:hover { color: var(--accent); }
+
+  .section-header { margin-bottom: 40px; }
+  .section-kicker {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.25em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    display: block;
+  }
+  .section-title {
+    font-family: var(--font-body);
+    font-size: clamp(36px, 6vw, 64px);
+    font-weight: 800;
+    line-height: 0.95;
+    color: var(--text);
+  }
+
+  /* BIO */
+  .bio-block {
+    max-width: 720px;
+    background: var(--surface);
+    border-left: 4px solid var(--accent);
+    border-radius: 0 14px 14px 0;
+    padding: 28px 28px 28px 24px;
+    margin-bottom: 40px;
+  }
+  .bio-block p {
+    font-size: 15px;
+    line-height: 1.85;
+    color: var(--text);
+    margin-bottom: 12px;
+  }
+  .bio-block p:last-child { margin-bottom: 0; }
+
+  /* TIMELINE */
+  .timeline { display: flex; flex-direction: column; gap: 0; max-width: 800px; }
+  .timeline-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 24px 0;
+    border-bottom: 1px solid var(--border);
+    transition: padding-left 0.2s;
+  }
+  .timeline-item:hover { padding-left: 8px; }
+  .tl-header { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+  .tl-period {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent);
+    background: var(--surface);
+    padding: 2px 10px;
+    border-radius: 100px;
+    border: 1px solid var(--border);
+  }
+  .tl-company {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .tl-role {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .tl-bullets { list-style: none; display: flex; flex-direction: column; gap: 4px; padding-top: 4px; }
+  .tl-bullets li {
+    font-size: 13px;
+    color: var(--muted);
+    padding-left: 14px;
+    position: relative;
+    line-height: 1.5;
+  }
+  .tl-bullets li::before {
+    content: '›';
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  /* STATS */
+  .stat-row { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 36px; }
+  .stat-item { display: flex; flex-direction: column; gap: 2px; }
+  .stat-num {
+    font-family: var(--font-mono);
+    font-size: 36px;
+    color: var(--accent);
+    font-weight: 700;
+    line-height: 1;
+  }
+  .stat-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  /* SKILLS */
+  .skills-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+    max-width: 860px;
+  }
+  .skill-card {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    transition: all 0.3s;
+  }
+  .skill-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(124,58,237,0.1); }
+  .skill-name { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+  .skill-bar-bg { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .skill-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 2px;
+    width: 0;
+    transition: width 1s ease;
+  }
+  .skill-card.visible .skill-bar-fill { width: var(--level); }
+
+  /* STRENGTHS / WEAKNESSES */
+  .sw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; max-width: 860px; }
+  @media (max-width: 640px) { .sw-grid { grid-template-columns: 1fr; } }
+  .sw-column-header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+  .sw-column-title { font-family: var(--font-body); font-size: 26px; font-weight: 800; line-height: 1; }
+  .sw-tag {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+  }
+  .sw-tag.green { background: rgba(124,58,237,0.1); color: var(--accent); }
+  .sw-tag.orange { background: rgba(168,85,247,0.12); color: var(--accent2); }
+  .sw-item {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 10px;
+    transition: all 0.2s;
+  }
+  .sw-item:hover { transform: translateX(4px); box-shadow: 0 4px 12px rgba(124,58,237,0.08); }
+  .sw-item.strength { border-left: 3px solid var(--accent); }
+  .sw-item.growth { border-left: 3px solid var(--accent2); }
+  .sw-item-title { font-weight: 600; font-size: 13px; color: var(--text); margin-bottom: 5px; }
+  .sw-item-desc { font-size: 12px; color: var(--muted); line-height: 1.6; }
+
+  /* PORTFOLIO */
+  .portfolio-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; max-width: 860px; }
+  .portfolio-card {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    display: flex; flex-direction: column; gap: 10px;
+    transition: all 0.25s;
+    text-decoration: none;
+  }
+  .portfolio-card:hover { border-color: var(--accent); transform: translateY(-4px); box-shadow: 0 8px 24px rgba(124,58,237,0.12); }
+  .portfolio-icon { font-size: 26px; }
+  .portfolio-title { font-size: 15px; font-weight: 700; color: var(--text); }
+  .portfolio-desc { font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .portfolio-link { font-family: var(--font-mono); font-size: 10px; color: var(--accent); letter-spacing: 0.1em; margin-top: auto; }
+
+  /* EDUCATION */
+  .edu-list { max-width: 680px; display: flex; flex-direction: column; gap: 14px; }
+  .edu-item {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    transition: all 0.2s;
+  }
+  .edu-item:hover { border-color: var(--accent); transform: translateX(6px); }
+  .edu-school { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; color: var(--accent); text-transform: uppercase; margin-bottom: 4px; }
+  .edu-degree { font-size: 15px; font-weight: 600; color: var(--text); }
+  .edu-spec { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  /* CONTACT */
+  .contact-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; max-width: 680px; }
+  .contact-card {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    text-decoration: none;
+    transition: all 0.25s;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .contact-card:hover { border-color: var(--accent); transform: translateY(-4px); box-shadow: 0 8px 20px rgba(124,58,237,0.1); }
+  .contact-icon { font-size: 22px; }
+  .contact-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; }
+  .contact-value { font-size: 13px; color: var(--text); font-weight: 600; }
+
+  /* INTERESTS TAGS */
+  .interests-tags { display: flex; flex-wrap: wrap; gap: 8px; max-width: 680px; }
+  .interest-tag {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 100px;
+    padding: 7px 16px;
+    font-size: 12px;
+    color: var(--text);
+    transition: all 0.2s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .interest-tag:hover { border-color: var(--accent); color: var(--accent); background: rgba(124,58,237,0.05); }
+
+  /* SCROLL HINT */
+  .scroll-hint {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    opacity: 0;
+    animation: fadeUp 1s ease 2s forwards;
+  }
+  .scroll-hint span { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.2em; color: var(--muted); }
+  .scroll-line {
+    width: 1px; height: 36px;
+    background: linear-gradient(to bottom, var(--accent), transparent);
+    animation: scrollPulse 2s ease infinite;
+  }
+
+  /* FLOATING YEAR */
+  .floating-year {
+    position: fixed; bottom: 20px; right: 20px;
+    font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.15em;
+    color: var(--muted); opacity: 0.4; z-index: 100;
+    pointer-events: none;
+  }
+
+  /* ANIMATIONS */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes scrollPulse { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+  /* RESPONSIVE */
+  @media (max-width: 600px) {
+    #hero { padding: 36px 18px 24px; }
+    .section { padding: 48px 18px 36px; }
+    .nav-cards { grid-template-columns: 1fr 1fr; }
+    .stat-num { font-size: 28px; }
+  }
+
+  @media (max-width: 380px) {
+    .nav-cards { grid-template-columns: 1fr; }
+  }
+
+  /* TOOLTIP */
+  [data-tooltip] { position: relative; }
+  [data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--text);
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+    z-index: 1000;
+  }
+  [data-tooltip]:hover::after { opacity: 1; }
+
+  /* SCRIPT LINK BUTTON */
+  .script-link-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #fff;
+    text-decoration: none;
+    border-radius: 12px;
+    padding: 14px 22px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+    transition: all 0.25s;
+    box-shadow: 0 4px 16px rgba(124,58,237,0.25);
+    margin-top: 8px;
+  }
+  .script-link-card:hover { transform: translateY(-3px); box-shadow: 0 8px 28px rgba(124,58,237,0.35); }
+
+  /* ===== CURSOR SELECTOR BAR ===== */
+  #cursorBar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 99999;
+    background: rgba(15,10,35,0.97);
+    border-bottom: 1.5px solid rgba(124,58,237,0.4);
+    backdrop-filter: blur(12px);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    font-family: 'Ubuntu Mono', monospace;
+    box-shadow: 0 2px 20px rgba(124,58,237,0.15);
+  }
+  #cursorBar::-webkit-scrollbar { display: none; }
+  .cbar-label {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: rgba(168,85,247,0.7);
+    text-transform: uppercase;
+    white-space: nowrap;
+    padding-right: 6px;
+    border-right: 1px solid rgba(124,58,237,0.3);
+    margin-right: 2px;
+  }
+  .cbar-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    background: rgba(124,58,237,0.08);
+    border: 1.5px solid rgba(124,58,237,0.2);
+    border-radius: 8px;
+    padding: 5px 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: rgba(200,180,255,0.8);
+    white-space: nowrap;
+    min-width: 72px;
+  }
+  .cbar-btn:hover {
+    background: rgba(124,58,237,0.2);
+    border-color: rgba(168,85,247,0.6);
+    color: #fff;
+    transform: translateY(-1px);
+  }
+  .cbar-btn.active {
+    background: linear-gradient(135deg, rgba(124,58,237,0.5), rgba(168,85,247,0.4));
+    border-color: #a855f7;
+    color: #fff;
+    box-shadow: 0 0 10px rgba(124,58,237,0.4);
+  }
+  .cbar-icon { font-size: 16px; line-height: 1; }
+  .cbar-name { font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.9; }
+  #hero { padding-top: 80px !important; }
+</style>
+</head>
+<body>
+
+<canvas id="dragonCanvas"></canvas>
+
+<!-- ===== CURSOR SELECTOR BAR ===== -->
+<div id="cursorBar">
+  <span class="cbar-label">🖱️ Kursor</span>
+  <button class="cbar-btn active" onclick="setCursor('none')" id="btn-none">
+    <span class="cbar-icon">🖱️</span>
+    <span class="cbar-name">Normalna</span>
+  </button>
+  <button class="cbar-btn" onclick="setCursor('dragon')" id="btn-dragon">
+    <span class="cbar-icon">🐉</span>
+    <span class="cbar-name">Smok</span>
+  </button>
+  <button class="cbar-btn" onclick="setCursor('snake')" id="btn-snake">
+    <span class="cbar-icon">🐍</span>
+    <span class="cbar-name">Wąż</span>
+  </button>
+  <button class="cbar-btn" onclick="setCursor('textcircle')" id="btn-textcircle">
+    <span class="cbar-icon">💬</span>
+    <span class="cbar-name">Tekst</span>
+  </button>
+  <button class="cbar-btn" onclick="setCursor('fairy')" id="btn-fairy">
+    <span class="cbar-icon">✨</span>
+    <span class="cbar-name">Fairy Dust</span>
+  </button>
+  <button class="cbar-btn" onclick="setCursor('clock')" id="btn-clock">
+    <span class="cbar-icon">🕐</span>
+    <span class="cbar-name">Zegar</span>
+  </button>
+  <button class="cbar-btn" onclick="setCursor('string')" id="btn-string">
+    <span class="cbar-icon">🧵</span>
+    <span class="cbar-name">Gumka</span>
+  </button>
+</div>
+
+<!-- Effect scripts -->
+<script src="Efekty_html/elastic_dragon.js"></script>
+<script src="Efekty_html/snake_follower.js"></script>
+<script src="Efekty_html/text_circle.js"></script>
+<script src="Efekty_html/fairy_dust.js"></script>
+<script src="Efekty_html/clock_follower.js"></script>
+<script src="Efekty_html/elastic_string.js"></script>
+<div class="floating-year">2026</div>
+
+<!-- =================== HERO =================== -->
+<div id="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-grid-lines"></div>
+
+  <div class="hero-content">
+    <span class="hero-label">↳ Interaktywne CV · Warszawa · ur. 19xx</span>
+
+    <div>
+      <div class="hero-name-small">$ whoami</div>
+      <div class="hero-name-big">Paweł<br><span>W</span></div>
+    </div>
+
+    <p class="hero-tagline">
+      Specjalista ds. analizy danych, automatyzacji i administracji.<br>
+      Człowiek, który sprawia że rzeczy działają lepiej niż przed nim — i zostawia po sobie dokumentację.
+    </p>
+
+    <div class="hero-contacts">
+      <a href="mailto:paw******@gmail.com" class="hero-contact">pawla…@gmail.com</a>
+      <a href="tel:+48606" class="hero-contact">606 …</a>
+      <a href="https://github.com/legionowopawel" target="_blank" class="hero-contact">github/legionowopawel</a>
+    </div>
+
+    <nav class="nav-cards" id="mainNav">
+      <a class="nav-card" style="--card-color:#7c3aed" onclick="openSection('about')">
+        <span class="card-icon">👤</span>
+        <span class="card-title">O mnie</span>
+        <span class="card-desc">Kim jestem i czym się kieruję</span>
+        <span class="card-arrow">↗</span>
+      </a>
+      <a class="nav-card" style="--card-color:#7c3aed" onclick="openSection('experience')">
+        <span class="card-icon">📋</span>
+        <span class="card-title">Doświadczenie</span>
+        <span class="card-desc">15+ lat pracy w analizie i automatyzacji</span>
+        <span class="card-arrow">↗</span>
+      </a>
+      <a class="nav-card" style="--card-color:#a855f7" onclick="openSection('skills')">
+        <span class="card-icon">⚙️</span>
+        <span class="card-title">Umiejętności</span>
+        <span class="card-desc">Python, Excel, CCTV, CRM i więcej</span>
+        <span class="card-arrow">↗</span>
+      </a>
+      <a class="nav-card" style="--card-color:#6d28d9" onclick="openSection('strengths')">
+        <span class="card-icon">💡</span>
+        <span class="card-title">Mocne & Słabe</span>
+        <span class="card-desc">Co wnoszę, co rozwijam</span>
+        <span class="card-arrow">↗</span>
+      </a>
+      <a class="nav-card" style="--card-color:#8b5cf6" onclick="openSection('portfolio')">
+        <span class="card-icon">🗂️</span>
+        <span class="card-title">Portfolio</span>
+        <span class="card-desc">Projekty, GitHub, skrypty</span>
+        <span class="card-arrow">↗</span>
+      </a>
+      <a class="nav-card" style="--card-color:#7c3aed" onclick="openSection('education')">
+        <span class="card-icon">🎓</span>
+        <span class="card-title">Edukacja</span>
+        <span class="card-desc">WSB Merito, WSGN, PW</span>
+        <span class="card-arrow">↗</span>
+      </a>
+      <a class="nav-card" style="--card-color:#5b21b6" onclick="openSection('contact')">
+        <span class="card-icon">📡</span>
+        <span class="card-title">Kontakt</span>
+        <span class="card-desc">Napisz, zadzwoń lub znajdź online</span>
+        <span class="card-arrow">↗</span>
+      </a>
+      <a class="nav-card" style="--card-color:#a855f7" href="https://legionowopawel.github.io/AutoResponder_AI_Text" target="_blank">
+        <span class="card-icon">🤖</span>
+        <span class="card-title">AI Skrypt</span>
+        <span class="card-desc">AutoResponder — mój projekt live</span>
+        <span class="card-arrow">↗</span>
+      </a>
+    </nav>
+  </div>
+
+  <div class="scroll-hint">
+    <span>EXPLORE</span>
+    <div class="scroll-line"></div>
+  </div>
+</div>
+
+<!-- =================== O MNIE =================== -->
+<section class="section" id="about">
+  <button class="section-back" onclick="closeSection('about')">← powrót</button>
+  <div class="section-header">
+    <span class="section-kicker">00 / Życiorys</span>
+    <h2 class="section-title">O<br>MNIE</h2>
+  </div>
+
+  <div class="bio-block">
+    <p>
+      Jestem specjalistą z ponad 15-letnim doświadczeniem, który potrafi wejść w nowe środowisko i dosłownie w ciągu tygodni zacząć wnosić realną wartość — niezależnie od tego, czy chodzi o analizę danych, systemy CCTV, automatyzację procesów czy dokumentację. To nie przypadek, tylko efekt szerokiej bazy wiedzy i wrodzonej ciekawości tego, jak rzeczy działają.
+    </p>
+    <p>
+      Moją siłą jest zdolność widzenia całości — łączę techniczne rozumienie systemów z praktycznym podejściem do dokumentacji i komunikacji. Pracowałem z Policją przy materiale dowodowym, zarządzałem infrastrukturą 300 kamer, pisałem narzędzia Python automatyzujące godziny żmudnej pracy. Każdy projekt zostawiam w lepszym stanie niż go zastałem.
+    </p>
+    <p>
+      Moja różnorodna ścieżka zawodowa — od budownictwa przez ubezpieczenia, e-commerce, aż po IT i bezpieczeństwo — to atut, nie wada. Oznacza, że rozumiem kontekst biznesowy szerzej niż wąski specjalista, adaptuję się błyskawicznie i nie panikuję w nowych sytuacjach. Uczę się przez działanie i zostawiam po sobie narzędzia — nie tylko wykonaną robotę.
+    </p>
+    <p>
+      Interesuje mnie elektronika, automatyzacja, analiza danych, grafika i wideo. Programuję w Pythonie, obsługuję zaawansowane funkcje Excela, znam środowiska testowe (ISTQB, Selenium, JIRA) i systemy CCTV klasy enterprise (Dahua, Hikvision, Novus). Po godzinach: ogród i rower jako forma deliberatywnej ciszy po intensywnej pracy z danymi.
+    </p>
+  </div>
+
+  <a class="script-link-card" href="https://legionowopawel.github.io/AutoResponder_AI_Text" target="_blank">
+    🤖 AutoResponder AI — mój projekt →
+  </a>
+</section>
+
+<!-- =================== EXPERIENCE =================== -->
+<section class="section" id="experience">
+  <button class="section-back" onclick="closeSection('experience')">← powrót</button>
+  <div class="section-header">
+    <span class="section-kicker">01 / Kariera</span>
+    <h2 class="section-title">DOŚWIAD-<br>CZENIE</h2>
+  </div>
+  <div class="stat-row">
+    <div class="stat-item"><span class="stat-num">15+</span><span class="stat-label">Lat pracy</span></div>
+    <div class="stat-item"><span class="stat-num">8</span><span class="stat-label">Pracodawców</span></div>
+    <div class="stat-item"><span class="stat-num">300+</span><span class="stat-label">Kamer analizowanych</span></div>
+  </div>
+  <div class="timeline">
+    <div class="timeline-item">
+      <div class="tl-header">
+        <span class="tl-period">02.2026 — obecnie</span>
+        <span class="tl-company">PCis · Legionowo</span>
+      </div>
+      <div class="tl-role">Specjalista ds. Administracyjno-Biurowych</div>
+      <ul class="tl-bullets">
+        <li>Ewidencja stanów magazynowych i rozliczanie faktur</li>
+        <li>Zarządzanie komunikacją w mediach społecznościowych</li>
+        <li>Bieżąca praca administracyjno-biurowa</li>
+      </ul>
+    </div>
+    <div class="timeline-item">
+      <div class="tl-header">
+        <span class="tl-period">09–12.2025</span>
+        <span class="tl-company">Biuro Ochrony Mienia · Warszawa</span>
+      </div>
+      <div class="tl-role">Specjalista ds. Monitoringu</div>
+      <ul class="tl-bullets">
+        <li>Analiza obrazu z 300 kamer, wykrywanie niezgodności</li>
+        <li>Tworzenie dokumentacji jakościowej i zapisów zdarzeń</li>
+        <li>Narzędzia Python do raportowania i inwentaryzacji</li>
+        <li>Aktualizacja firmware, testy, praca zgodnie z procedurami</li>
+      </ul>
+    </div>
+    <div class="timeline-item">
+      <div class="tl-header">
+        <span class="tl-period">2023–2024</span>
+        <span class="tl-company">Zlecenia · Warszawa</span>
+      </div>
+      <div class="tl-role">Specjalista ds. Analizy Materiału Filmowego</div>
+      <ul class="tl-bullets">
+        <li>Analiza materiałów pod kątem zgodności i jakości</li>
+        <li>Automatyzacja analizy danych — Python</li>
+        <li>Współpraca z Policją, przygotowywanie materiałów dowodowych</li>
+        <li>Obsługa systemów Dahua, Hikvision, Novus</li>
+      </ul>
+    </div>
+    <div class="timeline-item">
+      <div class="tl-header">
+        <span class="tl-period">2022</span>
+        <span class="tl-company">Zlecenie prywatne</span>
+      </div>
+      <div class="tl-role">Automatyzacja analizy danych</div>
+      <ul class="tl-bullets">
+        <li>Narzędzia do wykrywania błędów, duplikatów i niezgodności</li>
+        <li>Generowanie raportów TXT/DOCX oraz wykresów</li>
+        <li>Praca z dużymi bazami danych</li>
+      </ul>
+    </div>
+    <div class="timeline-item">
+      <div class="tl-header">
+        <span class="tl-period">02.2020–09.2023</span>
+        <span class="tl-company">Teleperformance / Philip Morris</span>
+      </div>
+      <div class="tl-role">Starszy Specjalista ds. Obsługi Klienta</div>
+      <ul class="tl-bullets">
+        <li>Analiza obciążenia i jakości pracy zespołu</li>
+        <li>Tworzenie dokumentacji procesowej, makr i szablonów</li>
+        <li>Praca z systemami CRM, raportowanie, archiwizacja</li>
+      </ul>
+    </div>
+    <div class="timeline-item">
+      <div class="tl-header">
+        <span class="tl-period">05.2018–05.2019</span>
+        <span class="tl-company">aboutyou.pl</span>
+      </div>
+      <div class="tl-role">Specjalista ds. Obsługi Klienta</div>
+      <ul class="tl-bullets">
+        <li>Analiza błędów w danych (m.in. IBAN)</li>
+        <li>Dokumentowanie i usprawnianie procesów reklamacyjnych</li>
+      </ul>
+    </div>
+    <div class="timeline-item">
+      <div class="tl-header">
+        <span class="tl-period">01–06.2011</span>
+        <span class="tl-company">Budownictwo</span>
+      </div>
+      <div class="tl-role">Asystent Rzeczoznawcy Budowlanego</div>
+      <ul class="tl-bullets">
+        <li>Inwentaryzacje, dokumentacja, raporty z niezgodności</li>
+      </ul>
+    </div>
+    <div class="timeline-item">
+      <div class="tl-header">
+        <span class="tl-period">07.2005–04.2008</span>
+        <span class="tl-company">Instytut Doradztwa Majątkowego</span>
+      </div>
+      <div class="tl-role">Specjalista</div>
+      <ul class="tl-bullets">
+        <li>Wprowadzanie danych, archiwizacja, masowa korespondencja</li>
+        <li>Praca z dokumentacją operatów i raportami</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- =================== SKILLS =================== -->
+<section class="section" id="skills">
+  <button class="section-back" onclick="closeSection('skills')">← powrót</button>
+  <div class="section-header">
+    <span class="section-kicker">02 / Kompetencje</span>
+    <h2 class="section-title">UMIE-<br>JĘTNOŚCI</h2>
+  </div>
+  <div class="skills-grid" id="skillsGrid">
+    <div class="skill-card" style="--level:85%"><div class="skill-name">🐍 Python (automatyzacja)</div><div class="skill-bar-bg"><div class="skill-bar-fill"></div></div></div>
+    <div class="skill-card" style="--level:90%"><div class="skill-name">📊 Excel (zaawansowany)</div><div class="skill-bar-bg"><div class="skill-bar-fill"></div></div></div>
+    <div class="skill-card" style="--level:82%"><div class="skill-name">🔍 Analiza danych</div><div class="skill-bar-bg"><div class="skill-bar-fill"></div></div></div>
+    <div class="skill-card" style="--level:78%"><div class="skill-name">📹 Systemy CCTV (Dahua, Hikvision)</div><div class="skill-bar-bg"><div class="skill-bar-fill"></div></div></div>
+    <div class="skill-card" style="--level:88%"><div class="skill-name">📁 Dokumentacja & raportowanie</div><div class="skill-bar-bg"><div class="skill-bar-fill"></div></div></div>
+    <div class="skill-card" style="--level:70%"><div class="skill-name">🧪 Testowanie oprogramowania (ISTQB)</div><div class="skill-bar-bg"><div class="skill-bar-fill"></div></div></div>
+    <div class="skill-card" style="--level:65%"><div class="skill-name">🤖 Selenium / API Testing</div><div class="skill-bar-bg"><div class="skill-bar-fill"></div></div></div>
+    <div class="skill-card" style="--level:80%"><div class="skill-name">🗃️ Systemy CRM</div><div class="skill-bar-bg"><div class="skill-bar-fill"></div></div></div>
+    <div class="skill-card" style="--level:70%"><div class="skill-name">🎨 Photoshop / Illustrator</div><div class="skill-bar-bg"><div class="skill-bar-fill"></div></div></div>
+    <div class="skill-card" style="--level:62%"><div class="skill-name">🔧 JIRA / zarządzanie zadaniami</div><div class="skill-bar-bg"><div class="skill-bar-fill"></div></div></div>
+    <div class="skill-card" style="--level:85%"><div class="skill-name">💬 Obsługa klienta B2C</div><div class="skill-bar-bg"><div class="skill-bar-fill"></div></div></div>
+    <div class="skill-card" style="--level:75%"><div class="skill-name">📝 Word / DOCX / szablony</div><div class="skill-bar-bg"><div class="skill-bar-fill"></div></div></div>
+  </div>
+
+  <div style="margin-top:48px">
+    <span class="section-kicker">Zainteresowania</span>
+    <h3 style="font-size:26px;font-weight:800;margin-bottom:16px;color:var(--text)">POZA PRACĄ</h3>
+    <div class="interests-tags">
+      <span class="interest-tag">🔌 Elektronika</span>
+      <span class="interest-tag">📊 Analiza danych</span>
+      <span class="interest-tag">⚡ Automatyzacja</span>
+      <span class="interest-tag">🎨 Grafika komputerowa</span>
+      <span class="interest-tag">🎬 Wideo</span>
+      <span class="interest-tag">🌿 Ogrodnictwo</span>
+      <span class="interest-tag">🚲 Rower</span>
+    </div>
+  </div>
+</section>
+
+<!-- =================== STRENGTHS =================== -->
+<section class="section" id="strengths">
+  <button class="section-back" onclick="closeSection('strengths')">← powrót</button>
+  <div class="section-header">
+    <span class="section-kicker">03 / Analiza</span>
+    <h2 class="section-title">MOCNE<br>& POTENCJAŁ</h2>
+  </div>
+  <div class="sw-grid">
+    <div class="sw-column">
+      <div class="sw-column-header">
+        <h3 class="sw-column-title" style="color:var(--accent)">MOCNE</h3>
+        <span class="sw-tag green">UDOWODNIONE</span>
+      </div>
+      <div class="sw-item strength">
+        <div class="sw-item-title">🔎 Dociekliwość i precyzja</div>
+        <div class="sw-item-desc">Analizuję 300 kamer, szukam niezgodności w danych, tworzę narzędzia wykrywające błędy. Nie odpuszczam dopóki problem nie jest rozwiązany.</div>
+      </div>
+      <div class="sw-item strength">
+        <div class="sw-item-title">⚙️ Automatyzuję tam gdzie inni klikają</div>
+        <div class="sw-item-desc">Python, makra, szablony — jeśli coś robię dwa razy, trzeci raz robi to skrypt. Mam to udokumentowane na GitHubie.</div>
+      </div>
+      <div class="sw-item strength">
+        <div class="sw-item-title">📁 Dokumentacja klasy muzealnej</div>
+        <div class="sw-item-desc">Każdy projekt zostawia po sobie czytelne raporty, pliki i zestawienia. Ludzie wracają do moich dokumentów.</div>
+      </div>
+      <div class="sw-item strength">
+        <div class="sw-item-title">🔄 Błyskawiczna adaptacja</div>
+        <div class="sw-item-desc">Budownictwo, ubezpieczenia, e-commerce, monitoring, IT — każde środowisko przyswajam szybko i wnoszę realną wartość od pierwszych tygodni.</div>
+      </div>
+      <div class="sw-item strength">
+        <div class="sw-item-title">😤 Odpowiedzialność bez wymówek</div>
+        <div class="sw-item-desc">Terminowość i rzetelność to mój standard, nie wyróżnienie. Nie zostawiam rzeczy w połowie.</div>
+      </div>
+    </div>
+
+    <div class="sw-column">
+      <div class="sw-column-header">
+        <h3 class="sw-column-title" style="color:var(--accent2)">ROZWIJAM</h3>
+        <span class="sw-tag orange">W TRAKCIE</span>
+      </div>
+      <div class="sw-item growth">
+        <div class="sw-item-title">🗣️ Prezentowanie osiągnięć</div>
+        <div class="sw-item-desc">Preferuję, żeby projekty mówiły same za siebie — to oznacza, że moje portfolio mówi głośniej niż niejedna rozmowa kwalifikacyjna. Stale uczę się komunikować sukcesy tak wyraźnie, jak je osiągam.</div>
+      </div>
+      <div class="sw-item growth">
+        <div class="sw-item-title">📈 Szerokość jako strategia</div>
+        <div class="sw-item-desc">Moja ścieżka obejmuje wiele dziedzin — to unikalna przewaga cross-domain, którą świadomie przekształcam w specjalizację: analiza danych + automatyzacja + bezpieczeństwo.</div>
+      </div>
+      <div class="sw-item growth">
+        <div class="sw-item-title">🌐 Język angielski</div>
+        <div class="sw-item-desc">Dokumentację techniczną czytam bez problemu i to w zupełności wystarcza do pracy z globalnymi narzędziami. Konwersację rozwijam — i tu też jestem skrupulatny.</div>
+      </div>
+      <div class="sw-item growth">
+        <div class="sw-item-title">🏢 Dynamika organizacyjna</div>
+        <div class="sw-item-desc">Najlepiej działam tam, gdzie mam realny wpływ na wynik — a to właśnie tam też firmy osiągają najlepsze rezultaty. Potrafię pracować w każdej strukturze, preferuję tę, gdzie liczy się efekt.</div>
+      </div>
+      <div class="sw-item growth">
+        <div class="sw-item-title">🎯 Szerokie zainteresowania jako supermoc</div>
+        <div class="sw-item-desc">Elektronika, grafika, Python, ogrodnictwo, CCTV — różnorodność pasji to zasób, który pozwala mi łączyć kropki tam, gdzie wąski specjalista nie dojrzy połączeń.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =================== PORTFOLIO =================== -->
+<section class="section" id="portfolio">
+  <button class="section-back" onclick="closeSection('portfolio')">← powrót</button>
+  <div class="section-header">
+    <span class="section-kicker">04 / Moje projekty</span>
+    <h2 class="section-title">PORT-<br>FOLIO</h2>
+  </div>
+  <div class="portfolio-grid">
+    <a class="portfolio-card" href="https://github.com/legionowopawel" target="_blank">
+      <span class="portfolio-icon">💻</span>
+      <span class="portfolio-title">GitHub</span>
+      <span class="portfolio-desc">Kod, skrypty Python, narzędzia do automatyzacji i analiz danych. Rzeczy które naprawdę napisałem.</span>
+      <span class="portfolio-link">github.com/legionowopawel →</span>
+    </a>
+    <a class="portfolio-card" href="https://legionowopawel.github.io/AutoResponder_AI_Text" target="_blank">
+      <span class="portfolio-icon">🤖</span>
+      <span class="portfolio-title">AutoResponder AI</span>
+      <span class="portfolio-desc">Projekt live — automatyczny asystent tekstowy oparty na AI. Działający produkt dostępny publicznie.</span>
+      <span class="portfolio-link">legionowopawel.github.io →</span>
+    </a>
+    <a class="portfolio-card" href="https://github.com/legionowopawel" target="_blank">
+      <span class="portfolio-icon">📹</span>
+      <span class="portfolio-title">Projekt: Analiza CCTV</span>
+      <span class="portfolio-desc">Analiza obrazu z 300 kamer, narzędzia Python do raportowania, dokumentacja zdarzeń dla Biura Ochrony Mienia.</span>
+      <span class="portfolio-link">↗ GitHub</span>
+    </a>
+    <a class="portfolio-card" href="https://github.com/legionowopawel" target="_blank">
+      <span class="portfolio-icon">🐍</span>
+      <span class="portfolio-title">Narzędzia Python</span>
+      <span class="portfolio-desc">Skrypty do wykrywania błędów, duplikatów i niezgodności w dużych bazach. Generowanie raportów DOCX/TXT.</span>
+      <span class="portfolio-link">↗ GitHub</span>
+    </a>
+    <a class="portfolio-card" href="WSTAW_LINK_YOUTUBE" target="_blank">
+      <span class="portfolio-icon">🎬</span>
+      <span class="portfolio-title">Film: Opowiadam o sobie</span>
+      <span class="portfolio-desc">Krótki film prezentacyjny — ścieżka, motywacje, projekty.</span>
+      <span class="portfolio-link">← WSTAW LINK DO YOUTUBE →</span>
+    </a>
+    <a class="portfolio-card" href="WSTAW_LINK_LINKEDIN" target="_blank">
+      <span class="portfolio-icon">🔗</span>
+      <span class="portfolio-title">LinkedIn</span>
+      <span class="portfolio-desc">Profil zawodowy z detalami projektów i możliwością kontaktu przez rekruterów.</span>
+      <span class="portfolio-link">← WSTAW LINK DO LINKEDIN →</span>
+    </a>
+  </div>
+</section>
+
+<!-- =================== EDUCATION =================== -->
+<section class="section" id="education">
+  <button class="section-back" onclick="closeSection('education')">← powrót</button>
+  <div class="section-header">
+    <span class="section-kicker">05 / Kształcenie</span>
+    <h2 class="section-title">EDU-<br>KACJA</h2>
+  </div>
+  <div class="edu-list">
+    <div class="edu-item">
+      <div class="edu-school">WSB Merito</div>
+      <div class="edu-degree">Studia podyplomowe — Technologie Komputerowe</div>
+      <div class="edu-spec">Specjalizacja: Testowanie oprogramowania (ISTQB Foundation, Selenium, API, JIRA)</div>
+    </div>
+    <div class="edu-item">
+      <div class="edu-school">WSGN — Wyższa Szkoła Gospodarowania Nieruchomościami</div>
+      <div class="edu-degree">Licencjat — Ekonomia</div>
+      <div class="edu-spec">Specjalizacja: Pośrednictwo w obrocie nieruchomościami</div>
+    </div>
+    <div class="edu-item">
+      <div class="edu-school">Politechnika Warszawska</div>
+      <div class="edu-degree">Budownictwo</div>
+      <div class="edu-spec">Solidne podstawy techniczne i inżynierskie myślenie o problemach</div>
+    </div>
+  </div>
+
+  <div style="margin-top:40px">
+    <span class="section-kicker">Szkolenia</span>
+    <h3 style="font-size:26px;font-weight:800;margin-bottom:16px;color:var(--text)">CERTYFIKATY</h3>
+    <div class="interests-tags">
+      <span class="interest-tag">🎓 ISTQB Foundation</span>
+      <span class="interest-tag">🤖 Selenium</span>
+      <span class="interest-tag">🔌 API Testing</span>
+      <span class="interest-tag">📋 JIRA</span>
+      <span class="interest-tag">💬 Obsługa reklamacji</span>
+      <span class="interest-tag">🗣️ Komunikacja NVC</span>
+      <span class="interest-tag">🎨 Photoshop / Illustrator</span>
+    </div>
+  </div>
+</section>
+
+<!-- =================== CONTACT =================== -->
+<section class="section" id="contact">
+  <button class="section-back" onclick="closeSection('contact')">← powrót</button>
+  <div class="section-header">
+    <span class="section-kicker">06 / Porozmawiajmy</span>
+    <h2 class="section-title">KONTAKT</h2>
+  </div>
+  <p style="color:var(--muted);font-size:15px;max-width:460px;line-height:1.8;margin-bottom:32px">
+    Szukasz kogoś kto ogarnie chaos w danych, napisze skrypt albo po prostu nie zostawi rzeczy w połowie? Napisz.
+  </p>
+  <div class="contact-grid">
+    <a class="contact-card" href="mailto:pawla.wiecka@gmail.com">
+      <span class="contact-icon">✉️</span>
+      <span class="contact-label">Email</span>
+      <span class="contact-value">pawla.wiecka@gmail.com</span>
+    </a>
+    <a class="contact-card" href="tel:+48606763388">
+      <span class="contact-icon">📱</span>
+      <span class="contact-label">Telefon</span>
+      <span class="contact-value">+48 606 763 388</span>
+    </a>
+    <a class="contact-card" href="https://github.com/legionowopawel" target="_blank">
+      <span class="contact-icon">💻</span>
+      <span class="contact-label">GitHub</span>
+      <span class="contact-value">legionowopawel</span>
+    </a>
+    <a class="contact-card" href="https://legionowopawel.github.io/AutoResponder_AI_Text" target="_blank">
+      <span class="contact-icon">🤖</span>
+      <span class="contact-label">AI Projekt</span>
+      <span class="contact-value">AutoResponder</span>
+    </a>
+    <a class="contact-card" href="WSTAW_LINK_LINKEDIN" target="_blank">
+      <span class="contact-icon">🔗</span>
+      <span class="contact-label">LinkedIn</span>
+      <span class="contact-value">← Dodaj profil →</span>
+    </a>
+    <a class="contact-card" href="#" target="_blank">
+      <span class="contact-icon">📍</span>
+      <span class="contact-label">Lokalizacja</span>
+      <span class="contact-value">Warszawa / Legionowo</span>
+    </a>
+  </div>
+</section>
+
+
+<script>
+// ===== CANVAS RESIZE =====
+const canvas = document.getElementById('dragonCanvas');
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ===== CURSOR EFFECT CONTROLLER =====
+let currentEffect = 'none';
+const allEffects = {
+  dragon:     window.EfektElasticDragon,
+  snake:      window.EfektSnakeFollower,
+  textcircle: window.EfektTextCircle,
+  fairy:      window.EfektFairyDust,
+  clock:      window.EfektClockFollower,
+  string:     window.EfektElasticString,
+};
+
+function setCursor(name) {
+  // Zatrzymaj poprzedni efekt
+  if (currentEffect !== 'none' && allEffects[currentEffect]) {
+    allEffects[currentEffect].destroy();
+  }
+
+  currentEffect = name;
+
+  // Aktualizuj przyciski
+  document.querySelectorAll('.cbar-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('btn-' + name);
+  if (btn) btn.classList.add('active');
+
+  // Wyczyść canvas
+  const ctx2 = canvas.getContext('2d');
+  ctx2.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (name === 'none') {
+    // Normalny kursor systemowy
+    document.body.style.cursor = 'auto';
+    canvas.style.display = 'none';
+    return;
+  }
+
+  canvas.style.display = 'block';
+  document.body.style.cursor = 'none';
+
+  if (allEffects[name]) {
+    allEffects[name].init();
+  }
+}
+
+// Uruchom domyślnie normalną myszką
+setCursor('none');
+
+// Na mobile chowaj canvas
+if ('ontouchstart' in window) {
+  canvas.style.display = 'none';
+}
+
+// ===== SECTIONS =====
+function openSection(id) {
+  document.getElementById('hero').style.display = 'none';
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0, 0);
+  if (id === 'skills') triggerSkillBars();
+}
+
+function closeSection(id) {
+  document.getElementById(id).classList.remove('active');
+  document.getElementById('hero').style.display = 'grid';
+  window.scrollTo(0, 0);
+}
+
+function triggerSkillBars() {
+  setTimeout(() => {
+    document.querySelectorAll('.skill-card').forEach((card, i) => {
+      setTimeout(() => card.classList.add('visible'), i * 60);
+    });
+  }, 100);
+}
+
+// Page title easter egg
+let hidden = false;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { document.title = '👋 Wróć!'; hidden = true; }
+  else if (hidden) { document.title = '✅ CV — Interaktywne'; hidden = false; }
+});
+</script>
+</body>
+</html>

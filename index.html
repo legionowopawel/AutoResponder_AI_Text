@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Autoresponderów</title>
+    <style>
+        :root {
+            --primary: #534AB7;
+            --secondary: #00FF41;
+            --bg: #0D0D0D;
+            --card-bg: #1A1A1A;
+            --text: #E0E0E0;
+            --accent: #FFD700;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            background: var(--bg); 
+            font-family: 'Segoe UI', sans-serif; 
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .container { max-width: 1100px; margin: 0 auto; padding: 40px 20px; }
+
+        header { text-align: center; margin-bottom: 50px; }
+        h1 { font-size: 2.2rem; color: var(--secondary); letter-spacing: 2px; text-transform: uppercase; }
+        .subtitle { color: #888; font-size: 0.9rem; }
+        .subtitle a { color: var(--secondary); text-decoration: none; font-weight: bold; }
+        .subtitle a:hover { text-decoration: underline; }
+
+        /* PIPELINE NAVIGATION */
+        .pipeline {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #333;
+            margin-bottom: 50px;
+        }
+        .step-link { text-decoration: none; color: inherit; flex: 1; text-align: center; transition: 0.3s; }
+        
+        /* Efekt hover tylko dla aktywnych linków (nie prowadzących do #) */
+        .step-link:not([href="#"]):hover { transform: translateY(-5px); }
+        .step-link[href="#"] { cursor: default; }
+
+        .step-icon {
+            width: 50px; height: 50px;
+            background: #222;
+            border: 2px solid var(--primary);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 10px;
+            font-size: 20px;
+        }
+        .step-label { font-size: 10px; font-weight: bold; color: var(--primary); text-transform: uppercase; }
+        .step-desc { font-size: 9px; color: #666; display: block; margin-top: 4px; line-height: 1.2; padding: 0 5px; }
+        
+        .arrow { color: #444; font-size: 18px; margin-bottom: 20px; }
+
+        /* PORTFOLIO GRID */
+        h2 { font-size: 1.2rem; margin-bottom: 20px; color: var(--secondary); border-left: 3px solid var(--primary); padding-left: 10px; }
+        
+        .grid-main { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); 
+            gap: 20px; 
+            margin-bottom: 40px;
+        }
+        .card-main {
+            background: var(--card-bg);
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 25px;
+            text-decoration: none;
+            color: inherit;
+            transition: 0.3s;
+            position: relative;
+        }
+        .card-main:hover { border-color: var(--secondary); transform: scale(1.02); }
+        .card-main h3 { color: var(--accent); margin-bottom: 10px; }
+        .card-main p { font-size: 0.9rem; color: #bbb; }
+
+        .grid-sub { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
+            gap: 15px; 
+        }
+        .card-sub {
+            background: var(--card-bg);
+            border: 1px solid #222;
+            border-radius: 8px;
+            padding: 15px;
+            text-decoration: none;
+            color: inherit;
+            transition: 0.2s;
+        }
+        .card-sub:hover { background: #222; border-color: var(--primary); }
+        .card-sub h4 { font-size: 0.9rem; color: var(--primary); margin-bottom: 5px; }
+        .card-sub p { font-size: 0.8rem; color: #888; }
+
+        .terminal-box {
+            background: #000;
+            font-family: monospace;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 40px;
+            font-size: 12px;
+            border-left: 3px solid var(--secondary);
+        }
+
+        @media (max-width: 600px) {
+            .pipeline { flex-wrap: wrap; gap: 10px; }
+            .arrow { display: none; }
+            .step-link { flex: 1 1 40%; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>System Autoresponderów</h1>
+        <p class="subtitle">autorem jest <a href="https://github.com/legionowopawel?tab=repositories" target="_blank">Paweł</a></p>
+    </header>
+
+    <nav class="pipeline">
+        <a href="example/01_script_gas/1.html" class="step-link">
+            <div class="step-icon">⚙️</div>
+            <div class="step-label">1. GAS</div>
+            <span class="step-desc">Pobieranie maili i wyzwalacz</span>
+        </a>
+        <div class="arrow">➔</div>
+        <a href="https://autoresponder-tresc-obrazek-zalacznik.onrender.com" class="step-link" target="_blank">
+            <div class="step-icon">🐍</div>
+            <div class="step-label">2. Flask</div>
+            <span class="step-desc">Logika serwerowa i routing</span>
+        </a>
+        <div class="arrow">➔</div>
+        <a href="example/02_AI/1.html" class="step-link">
+            <div class="step-icon">🤖</div>
+            <div class="step-label">3. AI Analysis</div>
+            <span class="step-desc">DeepSeek i analiza obrazów</span>
+        </a>
+        <div class="arrow">➔</div>
+        <a href="example/03_Response/1.html" class="step-link">
+            <div class="step-icon">✉️</div>
+            <div class="step-label">4. Response</div>
+            <span class="step-desc">Wysyłka gotowej odpowiedzi</span>
+        </a>
+    </nav>
+
+    <div id="portfolio">
+        <h2>Główne Moduły</h2>
+        <div class="grid-main">
+            <a href="example/zwykly/1.html" class="card-main">
+                <h3>Tyler Durden</h3>
+                <p>Bezpośredni, konkretny styl komunikacji. Zero zbędnych uprzejmości, sama esencja problemu.</p>
+            </a>
+
+            <a href="example/dociekliwy/1.html" class="card-main">
+                <h3>Eryk Dociekliwy</h3>
+                <p>Zadaje trafne pytania pomocnicze przed udzieleniem odpowiedzi. Analizuje intencje nadawcy.</p>
+            </a>
+
+            <a href="example/smierc/1.html" class="card-main">
+                <h3>Requiem</h3>
+                <p>Moduł ostateczny. Dokumentacja procesu i architektury systemu w klimacie kosmicznym.</p>
+            </a>
+        </div>
+
+        <h2>Moduły tematyczne</h2>
+        <div class="grid-sub">
+            <a href="example/nawiazanie/1.html" class="card-sub">
+                <h4>Nawiązanie</h4>
+                <p>Analiza historii wątku mailowego</p>
+            </a>
+            <a href="example/scrabble/1.html" class="card-sub">
+                <h4>Scrabble</h4>
+                <p>Kreatywny generator słowny AI</p>
+            </a>
+            <a href="example/biznes/1.html" class="card-sub">
+                <h4>Notariusz</h4>
+                <p>Responder kancelarii notarialnej</p>
+            </a>
+            <a href="example/emocje/1.html" class="card-sub">
+                <h4>Emocje</h4>
+                <p>Wspierająca wiadomość do nadawcy</p>
+            </a>
+        </div>
+    </div>
+
+    <div class="terminal-box">
+        <div id="logs">
+            [SYS] System zainicjalizowany pomyślnie.<br>
+            [READY] Portfolio gotowe do przeglądania.<br>
+        </div>
+        <span style="color: var(--secondary);">></span> <span class="cursor"></span>
+    </div>
+</div>
+
+<script>
+    const logs = document.getElementById('logs');
+    const messages = [
+        "[INFO] Moduł AI: DeepSeek gotowy do analizy...",
+        "[NET] Połączenie z Render.com aktywne.",
+        "[GAS] Skrypt Google Apps Script działa poprawnie."
+    ];
+    
+    setInterval(() => {
+        const msg = messages[Math.floor(Math.random() * messages.length)];
+        const line = document.createElement('div');
+        line.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        logs.appendChild(line);
+        if (logs.childNodes.length > 8) logs.removeChild(logs.firstChild);
+    }, 4000);
+</script>
+
+</body>
+</html>

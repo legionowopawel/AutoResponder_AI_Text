@@ -1,0 +1,18 @@
+A: Tak — tak samo jak zwykly.py
+
+02:57
+Claude responded: Plik trafia do responders/emotka_flux.
+
+Created a file, ran a command, read a file
+Created a file, ran a command, read a file
+Plik trafia do responders/emotka_flux.py. W zwykly.py wystarczą dwie zmiany:
+
+Import na górze pliku:
+
+python
+from responders.emotka_flux import generate_emotka
+Zamiana bloku emotki w build_zwykly_section — stare 6 linii zastąp jedną:
+
+python
+emoticon = generate_emotka(body, test_mode=test_mode)
+Moduł sam wczytuje JSON, buduje prompt, wywołuje FLUX z rotacją tokenów i zwraca gotowy dict {base64, content_type, filename} — albo None jeśli wszystko zawiedzie.

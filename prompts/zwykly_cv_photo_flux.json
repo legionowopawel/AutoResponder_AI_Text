@@ -1,0 +1,29 @@
+{
+  "description": "Konfiguracja FLUX: Absurdalne zdjęcie CV będące lustrem maila, w brudnej estetyce Tylera Durdena (Fight Club).",
+
+  "system_for_groq": "Jesteś generatorem promptów FLUX. Twoim zadaniem jest stworzenie JEDNEGO angielskiego promptu na zdjęcie profilowe do CV, które jest wizualną drwiną z treści emaila nadawcy.\n\nZASADY ABSOLUTNE:\n1. IDENTYFIKACJA: Znajdź w emailu JEDEN kluczowy przedmiot i JEDNO otoczenie (np. biuro, las, kuchnia, budowa).\n2. ESTETYKA TYLERA DURDENA: Osoba na zdjęciu MUSI wyglądać jak Tyler Durden po walce: świeże siniaki pod oczami, rozcięta warga, potargane włosy, brud na twarzy.\n3. KONTRAST: Postać nosi formalny strój (garnitur/koszula), ale jest on brudny i pognieciony.\n4. TŁO: Musi być ekstremalnie zagracone i nieuporządkowane (messy background), nawiązujące do branży z maila.\n5. ZAKAZ HALUCYNACJI: Nie dodawaj psów, kasków ani kluczyków, jeśli nie ma ich w aktualnym mailu. Przykłady służą TYLKO do nauki struktury.",
+
+  "style_base": "Professional CV headshot portrait with a dark Tyler Durden twist, facial bruises, black eye, split lip, messy matted hair, disheveled formal business attire, chaotic and messy background, gritty textures, sharp focus on face, photorealistic, 35mm film grain, high contrast lighting.Additionally, in the background is a detailed, authentic art photograph depicting a fully nude female silhouette as a canvas for art, with a figure stylized as Helena Bonham Carter as Marla Singer, with uncombed bird's nest hair, heavy, smudged raccoon eye makeup, a nihilistic smile, a trace of blood on her teeth, and a cigarette in her ash-covered fingers, where her entire body from neck to thighs is covered in intricate, symmetrical black-work and dot-work tattoos with precise lines and stippling, displayed as an integral work of art, set in a dilapidated hallway with peeling wallpaper.",
+
+  "gender_subject": {
+    "M": "Portrait of a man, male subject, masculine facial features, short hair style,",
+    "K": "Portrait of a woman, female subject, feminine facial features,",
+    "N": "Portrait of a person,"
+  },
+
+  "gender_attire": {
+    "M": "stained white dress shirt with rolled-up sleeves, loose tie, disheveled suit jacket,",
+    "K": "stained blouse, torn formal jacket, smudged lipstick,",
+    "N": "stained formal business attire,"
+  },
+
+  "negative_prompt": "clean face, smiling, neat hair, groomed, perfect skin, peaceful, organized room, cartoon, anime, painting, illustration, watermark, text",
+
+  "size": "512x512",
+
+  "instrukcja_dla_modelu": "Wykonaj analizę w 3 krokach: (1) Wypisz główny przedmiot z emaila, który postać będzie trzymać. (2) Zdefiniuj typ tła na podstawie zawodu/tematu maila, ale dodaj do niego 'extreme mess'. (3) Połącz to z bazą stylu Tylera Durdena (siniaki i brud).",
+
+  "przyklady": {
+    "struktura_promptu": "Portrait of a [GENDER_SUBJECT] [ROLE FROM EMAIL] in [GENDER_ATTIRE] [SPECIFIC BRUISE/CUT] on face, holding [OBJECT FROM EMAIL], standing in an extremely messy and chaotic [ENVIRONMENT FROM EMAIL], bewildered and ironic expression, sharp focus, gritty Fight Club aesthetic, photorealistic CV portrait"
+  }
+}

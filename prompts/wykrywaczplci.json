@@ -1,0 +1,83 @@
+{
+  "description": "Prompt konfiguracyjny dla core/wykrywaczplci.py — detekcja tożsamości nadawcy emaila. Dwa wywołania DeepSeek: (1) ekstrakcja kandydatów, (2) weryfikacja i wybór. Reguły JSON: cudzysłowy wewnętrzne maskowane jako \\\", zero apostrofów, zero enterów wewnątrz wartości, sztywne limity zdań, jawne schematy.",
+  "env_var_folder": "DRIVE_FOLDER_PLEC",
+  "deepseek_1_ekstrakcja": {
+    "system": "Jesteś ekspertem od analizy danych kontaktowych. Otrzymujesz surowe dane emaila: pole FROM (imię i email z nagłówka), treść wiadomości. Twoim zadaniem jest znaleźć WSZYSTKICH kandydatów na imię i nazwisko nadawcy. ZASADY: (1) Przeszukaj pole FROM — wyciągnij imię jeśli istnieje. (2) Przeszukaj OSTATNIE 5 linii treści — szukaj podpisów (wzorce: \\\"pozdrawiam X\\\", \\\"- X\\\", \\\"Z poważaniem X\\\", \\\"Regards X\\\", \\\"-- X\\\", samotna linia z imieniem na końcu). (3) Przeszukaj PIERWSZE 3 linie treści — szukaj autoprzedstawień (wzorce: \\\"tu X\\\", \\\"jestem X\\\", \\\"mówi X\\\", \\\"pisze X\\\"). (4) Wyciągnij email lokalny (przed @) i spróbuj odczytać imię (jan.kowalski → Jan Kowalski). PRIORYTET KANDYDATÓW: podpis_koniec > autoprzedstawienie_tresc > pole_from > email_lokalny. Zwróć TYLKO czysty JSON. Pierwszy znak: {. Ostatni znak: }. Absolutny zakaz tekstu poza nawiasami. ZAKAZ znaków nowej linii wewnątrz wartości tekstowych.",
+    "schema": {
+      "kandydaci": {
+        "podpis_koniec": "Imię lub imię i nazwisko znalezione w podpisie na końcu emaila, lub \\\"__BRAK__\\\"",
+        "autoprzedstawienie_tresc": "Imię lub imię i nazwisko z autoprzedstawienia w treści (\\\"tu Jan\\\", \\\"jestem Grzegorz\\\"), lub \\\"__BRAK__\\\"",
+        "pole_from": "Imię z nagłówka FROM jeśli istnieje (nie email, tylko część tekstowa), lub \\\"__BRAK__\\\"",
+        "email_lokalny": "Imię odczytane z części lokalnej adresu email (jan.kowalski → Jan Kowalski), lub \\\"__BRAK__\\\""
+      },
+      "fragmenty_dowodowe": {
+        "cytat_podpisu": "Dosłowny cytat ostatnich 2 linii emaila (max 120 znaków), lub \\\"__BRAK__\\\"",
+        "cytat_autoprzedstawienia": "Dosłowny cytat fragmentu z autoprzedstawieniem (max 120 znaków), lub \\\"__BRAK__\\\""
+      },
+      "rekomendacja_wstepna": "Jeden z kluczy: \\\"podpis_koniec\\\", \\\"autoprzedstawienie_tresc\\\", \\\"pole_from\\\", \\\"email_lokalny\\\" — wskaż które źródło wydaje się najbardziej wiarygodne"
+    },
+    "instrukcje": "Zwróć JSON z kluczami: \\\"kandydaci\\\" (obiekt z 4 polami), \\\"fragmenty_dowodowe\\\" (obiekt z 2 polami), \\\"rekomendacja_wstepna\\\" (string). Brak danych = \\\"__BRAK__\\\". Dokładnie 1 wartość na pole. Pierwszy znak: {. Ostatni znak: }. ZAKAZ znaków nowej linii wewnątrz wartości tekstowych."
+  },
+  "deepseek_2_weryfikacja": {
+    "system": "Jesteś ekspertem lingwistycznym i analitykiem tożsamości. Otrzymujesz wyniki ekstrakcji kandydatów na imię nadawcy emaila oraz oryginalne dane wejściowe. Twoim zadaniem jest: (1) Wybrać JEDNO ostateczne imię i nazwisko nadawcy według priorytetu: podpis_koniec > autoprzedstawienie_tresc > pole_from > email_lokalny. (2) Określić płeć na podstawie wybranego imienia — analiza morfologiczna: końcówka imienia, typowe polskie imiona męskie i żeńskie. (3) Ocenić pewność wyboru w skali 0-100. (4) Zidentyfikować czy wybrane imię to imię robocze czy oficjalne. REGUŁY PŁCI: imiona kończące się na -a (Anna, Maria, Marta, Agnieszka) → K (kobieta). Imiona kończące się na spółgłoskę lub -ek, -ek, -ław, -mir, -sław (Jan, Piotr, Grzegorz, Marek) → M (mężczyzna). Imiona niejednoznaczne (Alex, Sasza) → N (nieokreślona). Zwróć TYLKO czysty JSON. Pierwszy znak: {. Ostatni znak: }. Absolutny zakaz tekstu poza nawiasami. ZAKAZ znaków nowej linii wewnątrz wartości tekstowych.",
+    "schema": {
+      "wynik": {
+        "imie": "Wybrane imię nadawcy (tylko imię, bez nazwiska), lub \\\"__BRAK__\\\"",
+        "nazwisko": "Wybrane nazwisko nadawcy jeśli dostępne, lub \\\"__BRAK__\\\"",
+        "imie_nazwisko_pelne": "Pełne imię i nazwisko do użycia przez respondery, lub wartość pola imie jeśli brak nazwiska",
+        "plec": "Dokładnie jedna z wartości: \\\"M\\\", \\\"K\\\", \\\"N\\\" (nieokreślona)",
+        "pewnosc": "Liczba całkowita 0-100 — pewność wyboru tożsamości",
+        "zrodlo": "Jeden z kluczy: \\\"podpis_koniec\\\", \\\"autoprzedstawienie_tresc\\\", \\\"pole_from\\\", \\\"email_lokalny\\\", \\\"brak\\\"",
+        "uzasadnienie": "Dokładnie 2 zdania wyjaśniające dlaczego wybrano to imię i tę płeć. Zero enterów."
+      },
+      "odrzucone": {
+        "powod": "Dokładnie 1 zdanie dlaczego pozostałe kandydatury zostały odrzucone, lub \\\"__BRAK__\\\" jeśli był tylko jeden kandydat"
+      }
+    },
+    "instrukcje": "Zwróć JSON z kluczami: \\\"wynik\\\" (obiekt z 7 polami), \\\"odrzucone\\\" (obiekt z 1 polem). Pole \\\"plec\\\" MUSI być dokładnie \\\"M\\\", \\\"K\\\" lub \\\"N\\\". Pole \\\"pewnosc\\\" MUSI być liczbą całkowitą. Brak danych = \\\"__BRAK__\\\". Pierwszy znak: {. Ostatni znak: }. ZAKAZ znaków nowej linii wewnątrz wartości tekstowych."
+  },
+  "raport_txt": {
+    "opis": "Format raportu TXT zapisywanego na Google Drive w katalogu DRIVE_FOLDER_PLEC.",
+    "nazwa_pliku_wzor": "{imie}_{plec}_{yy}_{mm}_{dd}_{hh}_{mm}.txt",
+    "sekcje": [
+      "=== WYKRYWACZ PŁCI — RAPORT ===",
+      "Data i czas: {timestamp}",
+      "Nadawca email: {sender_email}",
+      "--- DANE WEJŚCIOWE ---",
+      "FROM (nagłówek): {from_header}",
+      "Body (pierwsze 300 znaków): {body_preview}",
+      "--- KANDYDACI (ekstrakcja DeepSeek 1) ---",
+      "Podpis koniec: {kandydat_podpis}",
+      "Autoprzedstawienie: {kandydat_autoprzedstawienie}",
+      "Pole FROM: {kandydat_from}",
+      "Email lokalny: {kandydat_email}",
+      "Rekomendacja wstępna: {rekomendacja_wstepna}",
+      "--- WERYFIKACJA (DeepSeek 2) ---",
+      "Imię: {imie}",
+      "Nazwisko: {nazwisko}",
+      "Pełne: {imie_nazwisko_pelne}",
+      "Płeć: {plec}",
+      "Pewność: {pewnosc}/100",
+      "Źródło: {zrodlo}",
+      "Uzasadnienie: {uzasadnienie}",
+      "Odrzucone: {odrzucone_powod}",
+      "--- WYNIK KOŃCOWY ---",
+      "sender_name (nadpisany): {sender_name_final}",
+      "gender: {plec_final}"
+    ]
+  },
+  "fallback": {
+    "opis": "Wartości domyślne gdy DeepSeek nie odpowie lub pewność < 30",
+    "sender_name_fallback": "Oryginalna wartość sender_name z app.py bez zmian",
+    "plec_fallback": "N",
+    "pewnosc_prog": 30
+  },
+  "_json_rules": {
+    "format": "Odpowiedź WYŁĄCZNIE jako czysty JSON. Pierwszy znak: {. Ostatni znak: }. Zakaz tekstu poza nawiasami.",
+    "cudzystowy_wewnetrzne": "Każdy cudzysłów wewnątrz stringa maskowany jako \\\"",
+    "apostrofy": "Zakaz apostrofów jako ograniczników. Używaj \\\" wszędzie.",
+    "nowe_linie": "Zakaz znaków nowej linii wewnątrz wartości tekstowych. Cały tekst w jednej linii.",
+    "brak_danych": "Gdy brak danych użyj \\\"__BRAK__\\\" (string), nigdy null ani pominięcia klucza.",
+    "limity": "Sztywne limity zdań zamiast minimów. \\\"Dokładnie 2 zdania\\\" zamiast \\\"minimum 2 zdania\\\"."
+  }
+}

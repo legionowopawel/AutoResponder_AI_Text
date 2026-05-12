@@ -1,0 +1,117 @@
+{
+  "description": "Dwufazowy wykrywacz rzeczowników fizycznych. Faza 1: ekstrakcja namacalnych z tekstu. Faza 2: ekspansja gdy < 3 wyników — synonimy i rekwizyty fizyczne pasujące do kontekstu. Wynik zawsze gotowy do użycia w FLUX, ikonie, CV-zdjęciu i raporcie psychiatrycznym.",
+
+  "faza_1_ekstrakcja": {
+    "opis": "Wywołanie pierwsze. Wyciąga WYŁĄCZNIE rzeczowniki fizycznie istniejące w tekście emaila. Zero interpretacji, zero ekspansji.",
+    "model": "llama-3.3-70b-versatile",
+    "max_tokens": 2000,
+    "temperature": 0.0,
+    "system": "Jesteś precyzyjnym filtrem językowym. Twoje jedyne zadanie: wyciągnąć z tekstu rzeczowniki FIZYCZNE — takie które istnieją materialnie i można je sfotografować leżące na stole lub podłodze.\n\nTEST NAMACALNOŚCI (zastosuj do każdego słowa):\n→ Czy mogę to podnieść, dotknąć, wziąć do ręki lub wejść do środka?\n→ Czy fotograf mógłby to ustawić jako rekwizyt na zdjęciu?\nJeśli TAK na oba pytania — dodaj do listy.\nJeśli NIE na którekolwiek — pomiń bezwzględnie.\n\nBEZWZGLĘDNE ZAKAZY (nigdy nie dodawaj):\n- Przymiotniki i przysłówki: 'ciekawy', 'szybko', 'miły' — to NIE są rzeczowniki\n- Imiona własne ludzi: Paweł, Anna, Marek — to osoby, nie przedmioty\n- Powitania i wykrzykniki: cześć, hej, dzień dobry, halo\n- Role i zawody: żona, mąż, szef, brygadzista, sąsiad, dziecko — to ludzie\n- Emocje i stany: smutek, strach, radość, miłość, nadzieja, złość\n- Pojęcia abstrakcyjne: praca, awans, problem, sukces, wolność, czas, sens\n- Czynności jako rzeczowniki: spacer, praca, myślenie, mówienie\n- Nazwy firm, krajów, miast, miejscowości\n\nDOPUSZCZALNE KATEGORIE (tylko te):\n- Przedmioty fizyczne: stół, krzesło, komputer, telefon, klucz\n- Narzędzia i urządzenia: kilof, wiertarka, piec, kuchenka\n- Pojazdy: samochód, rower, traktor, autobus\n- Zwierzęta: pies, kot, krowa, mucha\n- Rośliny: drzewo, kwiat, ziemniak, trawa\n- Ubrania i akcesoria: but, kurtka, czapka, pasek\n- Jedzenie i picie: chleb, woda, piwo, zupa\n- Budynki i ich części: dom, kopalnia, okno, drzwi, ściana, podłoga\n- Części ciała: ręka, dłoń, kolano, plecy, noga\n- Materiały fizyczne: węgiel, drewno, metal, beton, glina\n\nSPECJALNA ZASADA — słowa dwuznaczne:\nJeśli słowo może oznaczać coś fizycznego LUB abstrakcyjnego — bierz TYLKO jeśli w kontekście zdania chodzi o wersję fizyczną.\nPrzyklady: 'droga' jako asfalt = TAK. 'droga' jako metafora życia = NIE.\n'głowa' jako część ciała = TAK. 'głowa' jako 'głowa firmy' = NIE.\n\nFORMAT ODPOWIEDZI:\nZwróć TYLKO czysty JSON. Pierwszy znak: {. Ostatni znak: }. Zakaz tekstu poza nawiasami.\nKażdy rzeczownik w formie MIANOWNIKA LICZBY POJEDYNCZEJ.\nKlucze: rzecz001, rzecz002, rzecz003... (numeruj od 001).\nJeśli w tekście nie ma żadnych rzeczowników fizycznych — zwróć {}.",
+    "user_prefix": "Wyciągnij rzeczowniki FIZYCZNE z poniższego tekstu. Tylko to co można sfotografować lub dotknąć. Zero abstrakcji, zero imion, zero ról.\n\nFormat — TYLKO czysty JSON:\n{\"rzecz001\": \"kilof\", \"rzecz002\": \"pies\", \"rzecz003\": \"but\"}\n\nTEKST:\n",
+    "przyklad_wejscie": "Wczoraj byłem w kopalni z psem. Brygadzista dał mi awans bez uścisku dłoni. Żona patrzyła jak na meble.",
+    "przyklad_wyjscie": {
+      "rzecz001": "kopalnia",
+      "rzecz002": "pies",
+      "rzecz003": "dłoń",
+      "rzecz004": "mebel"
+    },
+    "przyklad_bledy_do_usuniecia": {
+      "brygadzista": "ROLA OSOBY — zakaz",
+      "awans": "ABSTRAKCJA — zakaz",
+      "zona": "ROLA OSOBY — zakaz",
+      "ciekawego": "PRZYMIOTNIK — nigdy nie jest rzeczownikiem",
+      "Pawel": "IMIĘ WŁASNE — zakaz",
+      "czesc": "POWITANIE — zakaz"
+    }
+  },
+
+  "faza_2_ekspansja": {
+    "opis": "Wywołanie drugie. Uruchamia się TYLKO gdy faza_1 zwróciła mniej niż 3 rzeczowniki. Model rozszerza listę o fizyczne skojarzenia, synonimy i rekwizyty pasujące do tematu/emocji emaila. Oznaczone osobnym kluczem żeby kod wiedział co było w tekście a co zostało dopowiedziane.",
+    "prog_uruchomienia": 3,
+    "model": "llama-3.3-70b-versatile",
+    "max_tokens": 1000,
+    "temperature": 0.3,
+    "system": "Jesteś generatorem fizycznych rekwizytów i skojarzeń. Dostajesz: (1) oryginalny tekst emaila, (2) listę rzeczowników już znalezionych w fazie 1 (może być pusta).\n\nTwoje zadanie: wygeneruj dodatkowe rzeczowniki fizyczne PASUJĄCE do tematu i emocji emaila — tak aby łączna liczba rzeczowników (faza1 + faza2) wyniosła co najmniej 8.\n\nZASADY EKSPANSJI:\n1. Słowa wulgarne i czasowniki → zamień na fizyczne skojarzenia. Przykłady:\n   'srasz' → kibel, muszla klozetowa, papier toaletowy, gówno, deska klozetowa\n   'pijesz' → butelka, kieliszek, piwo, wódka, szkło\n   'bijesz' → pięść, siniak, krew, ściana, pas\n2. Emocje → fizyczne rekwizyty które tę emocję reprezentują. Przykłady:\n   złość → pięść, stłuczone szkło, rozwalony mebel\n   smutek → łzy, poduszka, puste krzesło, chusteczka\n   strach → zamknięte drzwi, okno, zamek, ciemność (pomieszczenie)\n3. Tematy abstrakcyjne → fizyczne symbole. Przykłady:\n   'praca' przy komputerze → komputer, klawiatura, krzesło biurowe, kubek kawy\n   'problemy finansowe' → portfel, moneta, rachunek (kartka), klucz do domu\n   'samotność' → puste krzesło, talerz, łóżko, telefon (bez połączenia)\n4. Jeśli email to jedno słowo lub bardzo krótki — wymyśl minimum 8 rekwizytów pasujących do kontekstu.\n5. Wszystkie rzeczowniki w formie MIANOWNIKA LICZBY POJEDYNCZEJ.\n6. NIE powtarzaj rzeczowników z fazy 1.\n\nFORMAT ODPOWIEDZI:\nZwróć TYLKO czysty JSON z dwoma polami:\n{\n  \"rozszerzone\": {\"rzecz001\": \"...\", \"rzecz002\": \"...\"},\n  \"uwaga\": \"Jedno zdanie dlaczego te rekwizyty — np. 'temat złości, brak fizycznych obiektów w tekście'\"\n}\nPierwszy znak: {. Ostatni znak: }. Zakaz tekstu poza nawiasami.",
+    "user_prefix_szablon": "ORYGINALNY TEKST EMAILA:\n{{EMAIL_BODY}}\n\nREZULTAT FAZY 1 (już znalezione rzeczowniki fizyczne):\n{{FAZA1_JSON}}\n\nWygeneruj dodatkowe fizyczne rekwizyty pasujące do tematu emaila. Łączna liczba (faza1 + nowe) musi wynosić minimum 8.\n",
+    "przyklad_wejscie_email": "srasz",
+    "przyklad_wejscie_faza1": {},
+    "przyklad_wyjscie": {
+      "rozszerzone": {
+        "rzecz001": "kibel",
+        "rzecz002": "muszla",
+        "rzecz003": "papier",
+        "rzecz004": "gówno",
+        "rzecz005": "deska",
+        "rzecz006": "zlew",
+        "rzecz007": "podłoga",
+        "rzecz008": "ściana"
+      },
+      "uwaga": "Brak rzeczowników fizycznych w tekście — rozszerzono o rekwizyty fizyczne związane z kontekstem słowa"
+    }
+  },
+
+  "scalanie_wynikow": {
+    "opis": "Logika którą kod Python stosuje po obu wywołaniach.",
+    "krok_1": "Uruchom faza_1. Zapisz wynik jako slownik faza1_dict.",
+    "krok_2": "Policz len(faza1_dict). Jeśli >= 3: koniec, zwróć faza1_dict jako finalny wynik.",
+    "krok_3": "Jeśli < 3: uruchom faza_2 z faza1_dict jako kontekstem.",
+    "krok_4": "Połącz faza1_dict i faza2['rozszerzone'] w jeden słownik. Renumeruj klucze od rzecz001 do rzeczNNN.",
+    "krok_5": "Do debug TXT dopisz osobno: co było z fazy 1, co z fazy 2 (i dlaczego).",
+    "oznaczenie_zrodla": "Opcjonalnie: dodaj do wyniku pole '_zrodlo' = {'faza1': N, 'faza2': M} dla debugowania."
+  },
+
+  "znajdz_imie_nadawcy": {
+    "system": "Jesteś precyzyjnym lingwistą polskim. Znajdź imię NADAWCY emaila — osoby która napisała tę wiadomość. Zasady:\n1. Szukaj podpisu na końcu emaila — pojedyncze imię na osobnej linii to podpis nadawcy.\n2. Szukaj formy 'Pozdrawiam, Imię' lub '— Imię'.\n3. IGNORUJ imiona osób do których nadawca się zwraca (np. 'Drogi Pawle' — Paweł NIE jest nadawcą).\n4. Zwróć imię w MIANOWNIKU (np. 'Anna' nie 'Aniu', 'Paweł' nie 'Pawle').\n5. Jeśli nie ma podpisu nadawcy — zwróć {}.\n6. Zwróć TYLKO czysty JSON bez markdown, bez komentarzy.",
+    "user_prefix": "Znajdź imię NADAWCY (osoby która podpisała tę wiadomość, nie adresata).\n\nFormat: {\"imie\": \"Anna\"}\n\nTEKST:\n",
+    "max_tokens": 50,
+    "temperature": 0.0
+  },
+
+  "znajdz_miasto": {
+    "system": "Jesteś precyzyjnym lingwistą polskim. Znajdź miasto lub miejscowość ZAMIESZKANIA nadawcy emaila. Zasady:\n1. Szukaj TYLKO miejscowości gdzie nadawca MIESZKA lub POCHODZI — nie gdzie mieszka ktoś inny.\n2. Zwróć nazwę w MIANOWNIKU (np. 'Wałbrzych' nie 'Wałbrzychu', 'Mokra Wieś' nie 'Mokrej Wsi').\n3. Jeśli nie ma żadnej miejscowości nadawcy — zwróć {}.\n4. Zwróć TYLKO czysty JSON bez markdown, bez komentarzy.",
+    "user_prefix": "Znajdź miejscowość ZAMIESZKANIA nadawcy.\n\nFormat: {\"miasto\": \"Wałbrzych\"}\n\nTEKST:\n",
+    "max_tokens": 100,
+    "temperature": 0.0
+  },
+
+  "model": "llama-3.3-70b-versatile",
+  "max_tokens": 2000,
+  "temperature": 0.0,
+
+  "testy_skrajne": {
+    "test_1": {
+      "input": "srasz",
+      "oczekiwane_faza1": {},
+      "oczekiwane_faza2_min": ["kibel", "muszla", "papier"],
+      "komentarz": "Jedno słowo wulgarne — faza1 pusta, faza2 generuje rekwizyty toaletowe"
+    },
+    "test_2": {
+      "input": "cześć Paweł",
+      "oczekiwane_faza1": {},
+      "oczekiwane_faza2_min": 8,
+      "komentarz": "Powitanie + imię — oba zakazane w faza1, faza2 generuje rekwizyty z kontekstu powitania"
+    },
+    "test_3": {
+      "input": "Wczoraj byłem w kopalni z psem. Brygadzista dał mi awans bez uścisku dłoni.",
+      "oczekiwane_faza1": ["kopalnia", "pies", "dłoń"],
+      "faza2_potrzebna": false,
+      "komentarz": "Normalny email — faza1 zwraca 3+, faza2 nie uruchamia się"
+    },
+    "test_4": {
+      "input": "ciekawego dnia",
+      "oczekiwane_faza1": {},
+      "komentarz": "Przymiotnik + abstrakcja — faza1 pusta. 'Ciekawego' to przymiotnik NIE rzeczownik."
+    }
+  },
+
+  "notes": [
+    "Faza 1: temperatura 0.0 — zero interpretacji, tylko fakty fizyczne z tekstu",
+    "Faza 2: temperatura 0.3 — lekka kreatywność potrzebna do generowania skojarzeń",
+    "Próg ekspansji: 3 rzeczowniki — jeśli mniej niż 3 z fazy 1, uruchom fazę 2",
+    "Wynik fazy 2 oznaczony osobnym kluczem 'rozszerzone' — kod wie co było w tekście",
+    "Debug TXT: dopisuj osobno ile z fazy 1, ile z fazy 2, dlaczego ekspansja",
+    "Skrajne przypadki: jedno słowo, wulgaryzm, samo powitanie — wszystkie obsługiwane przez fazę 2",
+    "Słowa dwuznaczne: bierz fizyczne znaczenie TYLKO gdy kontekst zdania na to wskazuje",
+    "Użycie w innych modułach: FLUX icon, CV photo, panel_wytyczne, raport psychiatryczny — wszystkie czytają finalny scalony słownik"
+  ]
+}

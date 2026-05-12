@@ -1,0 +1,63 @@
+{
+  "system": "Jestes ekspertem empatycznej komunikacji. Generujesz dane w formacie JSON. Odpowiadasz WYLACZNIE czystym kodem JSON — pierwszy znak to '{', ostatni to '}'. Zero tekstu przed ani po. Zero znacznikow markdown. Zero enterow wewnatrz wartosci tekstowych.",
+  "user_template": "Przeanalizuj mail i wypelnij schemat JSON dla metody {{METODA_NAZWA}} (klucz: {{METODA_KEY}}).\n\nOpis metody: {{METODA_OPIS}}\nPrzyklad: {{METODA_PRZYKLAD}}\n\nMAIL:\n{{MAIL}}\n\nIMIE NADAWCY: {{SENDER_NAME}}\n\nZASADY (OBOWIAZKOWE):\n- maksymalnie 10 zdań HTML w polu pocieszenie\n- Maksymalnie 100 slow w pocieszenie\n- ZAKAZ slow: zapewniamy, gwarantujemy, naprawimy, wyslemy, termin, zrobimy\n- ZAKAZ dat i deklaracji czasowych\n- Uzyj min. 1 frazy z oryginalnego maila\n- ZAKAZ enterow i znakow nowej linii wewnatrz wartosci JSON\n- Wszystkie cudzyslowy wewnatrz pola pocieszenie zastap apostrofami\n\nSCHEMAT DO WYPELNIENIA:\n{\"metoda\": \"{{METODA_KEY}}\", \"pocieszenie\": \"<p>...</p><p>...</p>\", \"nastroj\": \"smutek\", \"intensywnosc\": 5}\n\nDozwolone wartosci pola nastroj: smutek, lek, frustracja, bol, neutralna, zlosc, samotnosc\nPole intensywnosc: liczba calkowita 0-10\nZwroc TYLKO ten jeden obiekt JSON.",
+  "metody_pocieszenia": [
+    {
+      "id": "01",
+      "key": "walidacja_emocji",
+      "nazwa": "walidacja emocji",
+      "opis": "Potwierdzenie ze to co czujesz jest prawdziwe. Nie oceniaj, nie analizuj, nie tlumacz dlaczego tak jest.",
+      "przyklad": "To co czujesz brzmi naprawde ciezko. Masz pelne prawo byc teraz w takim miejscu."
+    },
+    {
+      "id": "02",
+      "key": "obecnosc",
+      "nazwa": "obecnosc",
+      "opis": "Danie poczucia ze ktos jest obok — teraz. Sama obecnosc potrafi zmniejszyc poczucie samotnosci.",
+      "przyklad": "Jestem tu z toba w tym. Czytam kazde slowo i zostaje."
+    },
+    {
+      "id": "03",
+      "key": "normalizacja",
+      "nazwa": "normalizacja",
+      "opis": "Pokazanie ze ta konkretna ciemnosc nie jest oznaka slabosci — ze inni znaja ten ciezar.",
+      "przyklad": "Wielu ludzi, ktorzy przez to przechodzili, mowilo to samo. Nie jestes z tym sam."
+    },
+    {
+      "id": "04",
+      "key": "odzwierciedlenie",
+      "nazwa": "odzwierciedlenie",
+      "opis": "Parafrazuj to co napisal nadawca, by pokazac: slyszalem dokladnie to.",
+      "przyklad": "Napisales ze czujesz sie jakbys stal w miejscu. To brzmi wyczerpujaco."
+    },
+    {
+      "id": "05",
+      "key": "przestrzen_na_cisze",
+      "nazwa": "przestrzen na cisze",
+      "opis": "Nie spiesz do wyjscia. Daj przyzwolenie na to, zeby po prostu byc w tym.",
+      "przyklad": "Nie musisz tego teraz naprawiac. Mozesz po prostu byc tu, gdzie jestes."
+    },
+    {
+      "id": "06",
+      "key": "docenienie_odwagi",
+      "nazwa": "docenienie odwagi",
+      "opis": "Dostrzez wysilek wlozony w napisanie wiadomosci.",
+      "przyklad": "To ze mi o tym napisales naprawde cos znaczy. Dziekuje za te odwage."
+    },
+    {
+      "id": "07",
+      "key": "bez_srebrnych_podszewek",
+      "nazwa": "bez srebrnych podszewek",
+      "opis": "Nie szukaj na sile pozytywow. Zostan w prawdzie chwili.",
+      "przyklad": "Nie bede szukac jasnej strony. Po prostu jest teraz ciezko i to wystarczy."
+    },
+    {
+      "id": "08",
+      "key": "cieplo_przez_konkret",
+      "nazwa": "cieplo przez konkret",
+      "opis": "Odpowiedz na konkretny fragment lub sytuacje z wiadomosci.",
+      "przyklad": "Napisales o tym projekcie ktory padl. To musialo byc cos, na czym ci zalezalo."
+    }
+  ],
+  "fallback_pocieszenie": "<p>Dostalem Twoja wiadomosc i jestem tutaj.</p><p>To co czujesz ma sens. Jestem z Toba.</p>"
+}
