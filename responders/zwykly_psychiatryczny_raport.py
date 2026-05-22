@@ -1908,13 +1908,18 @@ def _generate_photos_parallel(
 
 def _build_docx(
     raport: dict,
+    body: str,
     photo_pacjent_b64: str | None,
     photo_przedmioty_b64: str | None,
     prompt_pacjent: str,
     prompt_przedmioty: str,
     cfg: dict,
 ) -> str | None:
-    """Buduje DOCX z całym raportem — zwraca base64 lub None."""
+    """Buduje DOCX z całym raportem — zwraca base64 lub None.
+
+    Przyjmujemy oryginalne `body` (treść wiadomości) aby móc
+    wygenerować krzyżówkę w kontekście raportu.
+    """
     try:
         from docx import Document
         from docx.shared import Pt, Cm, RGBColor
@@ -1926,6 +1931,7 @@ def _build_docx(
     try:
         return _build_docx_inner(
             raport,
+            body,
             photo_pacjent_b64,
             photo_przedmioty_b64,
             prompt_pacjent,
@@ -1941,6 +1947,7 @@ def _build_docx(
 
 def _build_docx_inner(
     raport: dict,
+    body: str,
     photo_pacjent_b64: str | None,
     photo_przedmioty_b64: str | None,
     prompt_pacjent: str,
@@ -3263,6 +3270,7 @@ def build_raport(
     photo_2_b64 = photo_2["base64"] if photo_2 else None
     docx_b64 = _build_docx(
         raport,
+        body,
         photo_1_b64,
         photo_2_b64,
         prompt_pacjent,
