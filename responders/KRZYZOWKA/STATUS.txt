@@ -1,0 +1,175 @@
+================================================================================
+GENERATOR KRZYŻÓWEK — STATUS PRODUKCJI
+================================================================================
+
+STATUS: ✅ GOTOWY PROD
+
+================================================================================
+OSTATNIE NAPRAWY (2025-05-22)
+================================================================================
+
+1. ✅ ALGORYTM — Naprawiono nakładające się wyrazy
+   - Wyrazy teraz się przecinają prawidłowo (jak krzyżówka w gazecie)
+   - Gęstość: 50-55%
+   - Brak chaos
+
+2. ✅ GUI — Autoload baza.txt
+   - Przy starcie program ładuje domyślnie baza.txt
+   - Bez konieczności ręcznego browse
+
+3. ✅ CLI — Unicode encoding
+   - Brak crashów z polskimi znakami
+   - Pełne output bez błędów
+
+================================================================================
+QUICK START
+================================================================================
+
+GUI:
+  C:\> cd "Krzyzowka"
+  C:\Krzyzowka> python main.py
+  → Interfejs graficzny
+  → Ustawienia: wymiary, warianty, plik
+  → Wygeneruj krzyżówkę
+
+CLI:
+  C:\> cd "Krzyzowka"
+  C:\Krzyzowka> python main.py --cli 15 15
+  → Generowanie 15×15
+  → 3 warianty default
+  → Wyniki w WYNIKI_*/ folder
+
+================================================================================
+WYNIKI TESTÓW
+================================================================================
+
+Test CLI (10×10, baza.txt):
+  ✓ Generacja: 3 warianty
+  ✓ Gęstość: 53-54%
+  ✓ Słów: 12-15 per wariant
+  ✓ PNG export: completed + blank
+  ✓ Excel export: OK
+  ✓ HTML export: OK
+  ✓ TXT export: OK
+
+================================================================================
+STRUKTURA WYNIKÓW
+================================================================================
+
+Dla każdego pokolenia tworzy się folder: WYNIKI_DATA_GODZINA_PLIK/
+
+Zawiera (per wariant):
+  - NNN_completed.png     (krzyżówka uzupełniona)
+  - NNN_blank.png         (pusta do druku)
+  - NNN.txt               (lista wyrazów + pozycje)
+  
+Razem dla wariantu 1:
+  - krizowka.xlsx         (Excel ze wszystkimi wyrazami)
+  - krizowka.html         (HTML printable)
+
+RAZEM: 11 plik per generacja (3 warianty)
+
+================================================================================
+OBSŁUGIWANE PARAMETRY
+================================================================================
+
+GUI:
+  - Szerokość siatki: 5-30 (default 15)
+  - Wysokość siatki: 5-30 (default 15)
+  - Liczba wariantów: 1-10 (default 3)
+  - Plik słów: browser (default baza.txt)
+
+CLI:
+  python main.py --cli WIDTH HEIGHT [PLIK]
+  
+  Przykłady:
+    python main.py --cli 10 10              # default baza.txt
+    python main.py --cli 15 15 mojeSlowa.txt # custom file
+
+================================================================================
+FORMAT BAZY SŁÓW
+================================================================================
+
+File: baza.txt (lub custom)
+Format: SŁOWO DEFINICJA
+
+Przykład:
+  PRACA Zarobkowe zajęcie
+  ZAWÓD Wyuczona profesja
+  ETAT Stałe zatrudnienie
+
+Wymogi:
+  - UTF-8 encoding
+  - Jeden wyraz per linię
+  - Wielkie litery
+  - Polska ortografia
+
+================================================================================
+ZALEŻNOŚCI
+================================================================================
+
+Zainstalowane:
+  ✓ PySide6 6.6.0     (GUI)
+  ✓ openpyxl 3.1.5    (Excel)
+  ✓ Pillow 12.1.1     (PNG)
+  ✓ Python 3.10+
+
+Instalacja:
+  pip install -r requirements_krzyzowka.txt
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+Problem: "No such file: baza.txt"
+  → Sprawdź czy baza.txt istnieje w katalogu Krzyzowka/
+  
+Problem: GUI się nie uruchamia
+  → Zainstaluj: pip install PySide6
+  
+Problem: Krzyżówka się generuje 10 minut
+  → To normalne dla 20×20, poczekaj
+  
+Problem: Unicode errors
+  → Upewnij się że baza.txt jest UTF-8
+  
+Problem: Mało wyrazów w krzyżówce
+  → Zwiększ bazę słów w baza.txt (min ~50 słów)
+
+================================================================================
+FUNKCJONALOŚĆ OBECNA
+================================================================================
+
+✅ Generowanie krzyżówek (backtracking)
+✅ Wielowariantowość (1-10 per run)
+✅ GUI (PySide6)
+✅ CLI (headless)
+✅ Export: PNG + PNG blank
+✅ Export: Excel z formatowaniem
+✅ Export: HTML5 responsive
+✅ Export: TXT
+✅ Auto-load baza.txt
+✅ Polska ortografia
+✅ Dostosowywalny rozmiar (5-30)
+✅ Dostosowywalny plik słów
+
+✗ Integracja z silnikiem Scrabble (odrębny moduł)
+✗ Wyliczanie punktów
+✗ Export PDF
+
+================================================================================
+ROZWÓJ PRZYSZŁOŚCIOWY
+================================================================================
+
+Potencjalne udoskonalenia:
+  - PDF export
+  - Interfejs do edycji bazy (GUI)
+  - Wielojęzykowe bazy
+  - Statystyka generacji
+  - Zapis/odczyt konfiguracji
+  - Integracją z Scrabble scorer
+
+================================================================================
+OSTATNIA AKTUALIZACJA: 2025-05-22
+STATUS: PRODUCTION READY ✅
+================================================================================

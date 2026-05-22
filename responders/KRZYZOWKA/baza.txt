@@ -1,0 +1,100 @@
+PRACA Zarobkowe zajęcie, cel uczestników CIS
+ZAWÓD Wyuczona profesja, np. kucharz lub ogrodnik
+ETAT Stałe zatrudnienie w pełnym wymiarze godzin
+KURS Szkolenie podnoszące nasze kwalifikacje
+NAUKA Zdobywanie nowej wiedzy i umiejętności
+SZANSA Nowa możliwość na odmianę swojego życia
+CEL To, co chcemy osiągnąć w programie
+SUKCES Podjęcie pracy po zakończeniu uczestnictwa
+KARIERA Droga rozwoju zawodowego człowieka
+FIRMA Miejsce, w którym można znaleźć zatrudnienie
+SZEF Osoba kierująca pracą całego zespołu
+ZADANIE Obowiązek do wykonania na warsztacie
+UMIEJĘTNOŚĆ Coś, co potrafimy dobrze robić w praktyce
+ZATRUDNIENIE Podpisanie umowy z nowym pracodawcą
+ROZWÓJ Ciągłe doskonalenie siebie i swoich umiejętności
+STAWKA Wynagrodzenie za godzinę pracy lub miesiąc
+PREMIA Dodatkowe pieniądze za dobrze wykonaną pracę
+AWANS Przejście na wyższe stanowisko w pracy
+PRAKTYKA Nauka zawodu poprzez robienie czegoś rękami
+STAŻ Pierwsza praca w celu zdobycia doświadczenia
+DOŚWIADCZENIE Wiedza zdobyta przez lata pracy w zawodzie
+KWALIFIKACJE Oficjalne uprawnienia do wykonywania zawodu
+CV Dokument z opisem naszej historii zawodowej
+ROZMOWA Spotkanie rekrutacyjne z przyszłym pracodawcą
+ZAPISY Przyjmowanie chętnych do nowego projektu
+PROJEKT Działanie z określonym celem i budżetem
+GRAFIK Rozkład godzin pracy na cały tydzień
+ZAJĘCIA Warsztaty lub spotkania z doradcą w CIS
+SZKOLENIE Lekcja przygotowująca do nowych obowiązków
+DYPLOM Dokument potwierdzający ukończenie CIS
+POMOC Wsparcie dawane komuś w trudnej sytuacji
+WSPARCIE Dłoń wyciągnięta do uczestnika przez zespół
+TEAM Angielskie określenie na zgraną grupę w pracy
+GRUPA Ludzie, z którymi dzielimy dni na warsztacie
+ZESPÓŁ Wszyscy pracownicy i uczestnicy działający razem
+EKIPA Pracownicy warsztatu wykonujący wspólne zadanie
+RAZEM Przeciwieństwo słowa osobno, podstawa integracji
+INTEGRACJA Główny cel CIS, łączenie ludzi ze społeczeństwem
+LUDZIE Osoby, które spotykamy codziennie w centrum
+BLISKO Niedaleko, w relacji z drugim człowiekiem
+KONTAKT Rozmowa lub spotkanie z drugą osobą
+SPOTKANIE Wspólny czas na rozmowę, np. z psychologiem
+PRZYJAŹŃ Bliska i serdeczna relacja między ludźmi
+SZACUNEK Ważna cecha, uznanie wartości drugiego człowieka
+ZAUFANIE Wiara w dobre intencje innych ludzi
+ZROZUMIENIE Zaakceptowanie czyjejś trudnej sytuacji
+EMPATIA Zdolność współodczuwania emocji innych osób
+TERAPIA Zajęcia pomagające poradzić sobie z problemami
+DORADCA Specjalista, który pomaga zaplanować ścieżkę zawodową
+PSYCHOLOG Specjalista od wsparcia emocjonalnego w CIS
+TRENER Osoba prowadząca warsztaty i ucząca zawodu
+LIDER Osoba, która przewodzi grupie w zadaniu
+OPIEKA Pomoc starszym lub słabszym osobom w warsztacie
+WOLONTARIAT Bezinteresowna praca na rzecz innych ludzi
+SERCE Symbol dobroci i wkładania wysiłku w pomoc
+DOBRO Pozytywne działanie na rzecz drugiego człowieka
+UŚMIECH Wyraz radości na twarzy, pomaga w pracy
+NADZIEJA Wiara w to, że jutro będzie lepsze
+ZMIANA Przełom w życiu, który zaczyna się w CIS
+WARSZTAT Miejsce praktycznej nauki zawodu w centrum
+OBIAD Ciepły posiłek jedzony w trakcie dnia w CIS
+POSIŁEK Jedzenie regenerujące siły do dalszej pracy
+KUCHARZ Pracownik warsztatu gastronomicznego, który gotuje
+KUCHNIA Serce warsztatu gastronomicznego
+MENU Karta dań przygotowywanych na obiad
+KAWA Gorący napój pity o poranku przed pracą
+HERBATA Ciepły napój, alternatywa dla kawy w przerwie
+PRZERWA Czas na odpoczynek w trakcie dnia pracy
+PORANEK Początek dnia, kiedy wszyscy schodzą się do CIS
+GRABIE Narzędzie do sprzątania liści w ogrodzie
+LIŚCIE Spadają z drzew jesienią, trzeba je zgrabić
+OGRÓD Zielone miejsce pracy warsztatu zieleni
+KWIATY Kolorowe rośliny sadzone na rabatach przez ogrodników
+TRAWA Zielony dywan w ogrodzie, który trzeba kosić
+ZIELEŃ Wszystkie rośliny wokół nas, o które dbamy
+ŁOPATA Narzędzie do kopania głębokich dołów w ziemi
+MIOTŁA Służy do zamiatania chodników i placu wokół CIS
+MOP Narzędzie do mycia podłóg na mokro w budynku
+WODA Niezbędna do podlewania roślin i do mycia podłóg
+CZYSTOŚĆ Efekt pracy warsztatu porządkowego
+PORZĄDEK Ład i skład na stanowisku pracy
+RECYKLING Ponowne wykorzystanie surowców wtórnych
+SORTOWANIE Dzielenie odpadów na plastik, papier i szkło
+REMONT Odnawianie i naprawianie pomieszczeń w CIS
+MALOWANIE Pokrywanie ścian nowym kolorem za pomocą pędzla
+PĘDZEL Narzędzie malarza do nakładania farby
+NARZĘDZIA Przedmioty ułatwiające pracę, np. młotek lub łopata
+MŁOTEK Służy do wbijania gwoździ w warsztacie remontowym
+ŚRUBKA Mały metalowy element do skręcania mebli
+BHP Przepisy bezpieczeństwa i higieny pracy
+SZPADEL Narzędzie ostre u dołu, idealne do przekopywania grządek
+TACZKI Służą do przewożenia ziemi lub kamieni w ogrodzie
+KOSIARKA Urządzenie mechaniczne do skracania trawy
+PATELNIA Służy do smażenia kotletów lub naleśników w kuchni
+GARNEK Duże naczynie kuchenne, w którym gotuje się zupę
+NOŻYCE Ogrodowe narzędzie do przycinania żywopłotu
+SITO Kuchenne narzędzie do przesiewania mąki na ciasto
+WAŁEK Drewniany przybór do rozgniatania ciasta na pierogi
+UMOWA Dokument określający zasady i prawa uczestnika CIS
+REGULAMIN Zbiór zasad zachowania, obowiązujący w centrum

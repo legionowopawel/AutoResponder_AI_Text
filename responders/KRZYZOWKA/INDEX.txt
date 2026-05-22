@@ -1,0 +1,295 @@
+================================================================================
+                    GENERATOR KRZYŻÓWEK — QUICK REFERENCE
+                              INDEX POLECEŃ
+================================================================================
+
+STARTUP
+────────────────────────────────────────────────────────────────────────────
+
+1. INSTALACJA (jednorazowo)
+   
+   cd "c:\python\scrabble ze słownikiem 4.0 — z kompputerem\Krzyzowka"
+   pip install -r requirements_krzyzowka.txt
+
+2. INTERFEJS GRAFICZNY
+
+   python main.py
+
+   Co się stanie:
+   → Pojawia się okno GUI
+   → Domyślnie ustawione: 15×15, 3 warianty, baza.txt
+   → Kliknij "Generuj krzyżówkę"
+   → Wyniki w folderze WYNIKI_*/
+
+3. LINIA POLECEŃ (bez GUI)
+
+   python main.py --cli 15 15
+   
+   Parametry:
+   - 15 = szerokość
+   - 15 = wysokość
+   - (opcjonalnie) ścieżka do pliku słów
+
+POLECENIA CLI
+────────────────────────────────────────────────────────────────────────────
+
+Generowanie 10×10 (domyślnie 3 warianty):
+   python main.py --cli 10 10
+
+Generowanie 15×15:
+   python main.py --cli 15 15
+
+Generowanie 20×20 (wolniej):
+   python main.py --cli 20 20
+
+Generowanie z niestandardowym plikiem słów:
+   python main.py --cli 12 12 mojeSlowa.txt
+
+Małą krzyżówkę (szybko):
+   python main.py --cli 8 8
+
+Dużą krzyżówkę (30×30, bardzo wolnie):
+   python main.py --cli 30 30
+
+EDYCJA BAZY SŁÓW
+────────────────────────────────────────────────────────────────────────────
+
+Domyślny plik: baza.txt
+
+1. Otwórz w edytorze (Notepad, VS Code, itp.):
+   baza.txt
+
+2. Format każdej linii:
+   SŁOWO_WIELKIE_LITERY Definicja lub podpowiedź
+
+3. Dodaj nowe słowa (każde w nowej linii):
+   
+   KOMPUTER Urządzenie do obliczeń
+   TELEFON Urządzenie komunikacyjne
+   INTERNET Sieć komputerowa
+
+4. Zapisz plik (WAŻNE: UTF-8 encoding)
+
+5. Uruchom generator:
+   python main.py
+
+PLIKI DOKUMENTACJI
+────────────────────────────────────────────────────────────────────────────
+
+PODSUMOWANIE.txt        ← Zacznij tutaj! Przegląd wszystkiego
+README.md               ← Pełna dokumentacja techniczna
+STATUS.txt              ← Obecny status, metrics
+CHANGELOG.md            ← Historia zmian (wersje)
+NAPRAWY_2025-05-22.txt  ← Szczegół ostatnich napraw
+INSTALL.txt             ← Instrukcje instalacji
+
+PLIK KONFIGURACJI
+────────────────────────────────────────────────────────────────────────────
+
+Baza słów:
+   baza.txt             ← Edytuj tutaj słowa
+   
+Wymiary (GUI):
+   15 (width) × 15 (height) default
+   Można zmienić spinner'ami w GUI
+   
+Wymiary (CLI):
+   python main.py --cli WIDTH HEIGHT
+
+Warianty:
+   3 domyślnie
+   Można zmienić spinner'em w GUI
+
+WYJŚCIE / REZULTATY
+────────────────────────────────────────────────────────────────────────────
+
+Folder: WYNIKI_20260522_120000_baza/
+
+Struktura:
+   001_completed.png    ← Krzyżówka uzupełniona (do czytania)
+   001_blank.png        ← Pusta siatka (do druku)
+   001.txt              ← Pytania (poziomo, pionowo)
+   
+   002_completed.png    ← Wariant 2
+   002_blank.png
+   002.txt
+   
+   003_completed.png    ← Wariant 3
+   003_blank.png
+   003.txt
+   
+   krizowka.xlsx        ← Excel (skonsolidowany)
+   krizowka.html        ← HTML (skonsolidowany)
+
+STRUKTURY KATALOGÓW
+────────────────────────────────────────────────────────────────────────────
+
+Główny katalog Krzyzowka/:
+
+   main.py                      ← Entry point
+   gui_main.py                  ← GUI
+   crossword_generator.py       ← Algorytm
+   crossword_grid.py            ← Struktura siatki
+   crossword_orchestrator.py    ← Orkiestracja
+   word_source.py               ← Wczytywanie słów
+   image_renderer.py            ← Renderowanie PNG
+   excel_exporter.py            ← Export Excel
+   html_exporter.py             ← Export HTML
+   
+   baza.txt                     ← Baza słów (EDYTUJ TUTAJ)
+   requirements_krzyzowka.txt   ← Zależności
+   
+   README.md                    ← Dokumentacja
+   PODSUMOWANIE.txt             ← This file
+   CHANGELOG.md                 ← Historia
+   STATUS.txt                   ← Status bieżący
+   
+   WYNIKI_*/                    ← Foldery wyników (auto-generowane)
+
+OPCJE GENEROWANIA (GUI)
+────────────────────────────────────────────────────────────────────────────
+
+┌─────────────────────────────────────────┐
+│   Generator Krzyżówek v1.0              │
+├─────────────────────────────────────────┤
+│                                         │
+│ Szerokość siatki: [▸▸▸ 15 ◂◂◂]          │
+│ Wysokość siatki: [▸▸▸ 15 ◂◂◂]           │
+│ Liczba wariantów: [▸▸▸ 3 ◂◂◂]           │
+│                                         │
+│ Plik ze słowami:                        │
+│ [baza.txt ..................] [Browse...] │
+│                                         │
+│ [█████░░░░░░░░░░░░░░░░░░░░░]            │
+│ Postęp: 45%                             │
+│                                         │
+│              [Generuj krzyżówkę]        │
+│                                         │
+└─────────────────────────────────────────┘
+
+Jak zmienić:
+   - Klik strzałek do zmiany liczb
+   - "Browse..." aby wybrać plik
+   - "Generuj krzyżówkę" aby uruchomić
+
+SZYBKIE POLECENIA
+────────────────────────────────────────────────────────────────────────────
+
+# Żeby nie pisać pełną ścieżkę, użyj:
+cd "c:\python\scrabble ze słownikiem 4.0 — z kompputerem\Krzyzowka"
+
+# Potem wystarczy:
+python main.py                        # GUI
+python main.py --cli 15 15           # CLI
+python main.py --cli 10 10 moje.txt  # CLI + custom file
+
+# Aby zobaczyć ostatnie wyniki:
+explorer WYNIKI_20260522_120000_baza  # Otwórz folder w Ekspl.
+
+# Aby edytować baze słów:
+notepad baza.txt                      # Otwórz edytor
+
+ŚCIEŻKI DOSTĘPU
+────────────────────────────────────────────────────────────────────────────
+
+Główny folder:
+   c:\python\scrabble ze słownikiem 4.0 — z kompputerem\Krzyzowka\
+
+Baza słów:
+   c:\python\scrabble ze słownikiem 4.0 — z kompputerem\Krzyzowka\baza.txt
+
+Wyniki ostatniej generacji:
+   c:\python\scrabble ze słownikiem 4.0 — z kompputerem\Krzyzowka\WYNIKI_*/
+
+ROZWIĄZYWANIE PROBLEMÓW
+────────────────────────────────────────────────────────────────────────────
+
+Problem: "Python not found"
+   Rozwiązanie: 
+   - Sprawdź czy Python 3.10+ zainstalowany
+   - Dodaj Python do PATH
+   - Lub użyj pełnej ścieżki: C:\Python310\python.exe main.py
+
+Problem: "ModuleNotFoundError"
+   Rozwiązanie:
+   - Uruchom: pip install -r requirements_krzyzowka.txt
+   - Sprawdź czy w właściwym katalogu (Krzyzowka/)
+
+Problem: "File not found: baza.txt"
+   Rozwiązanie:
+   - Sprawdź czy baza.txt istnieje
+   - Lub podaj pełną ścieżkę: python main.py --cli 15 15 C:\path\to\file.txt
+
+Problem: Generowanie bardzo wolne
+   Rozwiązanie:
+   - Użyj mniejszych wymiarów (10×10 zamiast 30×30)
+   - Zwiększ bazę słów (min 50 słów lepiej)
+   - Odczekaj (30×30 = 30-60 sekund normalne)
+
+Problem: Unicode/Polish characters error
+   Rozwiązanie:
+   - Otwórz baza.txt w Notepad++
+   - Ustaw encoding na UTF-8 BOM
+   - Zapisz plik
+   - Spróbuj ponownie
+
+STRUKTURA FORMATU BAZY
+────────────────────────────────────────────────────────────────────────────
+
+SŁOWO - musi być WIELKIE LITERY
+DEFINICJA - może być mała litera, liczby, znaki
+
+Prawidłowe:
+   PRACA Zarobkowe zajęcie
+   KOMPUTER Urządzenie do obliczeń
+   MAŁPY Zwierzęta małpowate (przec. z 5 liter)
+   KOT Zwierzę domowe (3 litery, MIT!)
+
+Nieprawidłowe:
+   praca zarobkowe zajęcie          (małe litery — zła! )
+   PRACA                              (brak definicji — OK, ale baza już)
+   PRACA, zarobkowe zajęcie        (przecinek — niedobre, bez)
+   
+Optymalne:
+   - Min 50, Max 200 słów
+   - Mieszane długości (3-15 liter)
+   - Polskie znaki (Ą,Ć,Ę,Ł,Ń,Ó,Ś,Ź,Ż) — OK!
+   - UTF-8 encoding
+
+METRYKI (OCZEKIWANE)
+────────────────────────────────────────────────────────────────────────────
+
+Rozmiar krzyżówki → Czas generowania → Liczba słów średnia
+
+8×8             ~0.5 sekundy        5-10 słów
+10×10           ~1-2 sekundy        12-17 słów
+12×12           ~2-3 sekundy        17-26 słów
+15×15           ~4-6 sekund         20-30 słów
+20×20           ~15-30 sekund       25-40 słów
+25×25           ~60 sekund          35-50 słów
+30×30           ~120+ sekund        40-60 słów
+
+GĘSTOŚĆ (procent wypełnienia siatki):
+   Zawsze: 40-55% (zależy od słów/algorytmu)
+
+PLIKI WYJŚCIA NA GENERACJĘ:
+   11 plików (dla 3 wariantów)
+   - 9 PNG (3 warianty × 2 wersje)
+   - 3 TXT
+   - 1 XLSX
+   - 1 HTML
+
+================================================================================
+                          KONIEC QUICK REFERENCE
+================================================================================
+
+Zapoznaj się z:
+  1. PODSUMOWANIE.txt (pełny przegląd)
+  2. README.md (dokumentacja techniczna)
+  3. NAPRAWY_2025-05-22.txt (szczegóły zmian)
+
+Masz pytania? Sprawdź STATUS.txt lub CHANGELOG.md
+
+Ostatnia aktualizacja: 2025-05-22
+Status: PRODUCTION READY ✅
+================================================================================

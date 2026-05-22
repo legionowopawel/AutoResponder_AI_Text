@@ -2026,12 +2026,12 @@ def _build_docx_inner(
                 para(
                     "[BŁĄD GENEROWANIA SEKCJI]",
                     italic=True,
-                    color=LGREY,
+                    color=DARK,
                     size=9,
                 )
                 return True
             if "__raw_text__" in value:
-                para(value["__raw_text__"], italic=True, color=GREY, size=9)
+                para(value["__raw_text__"], italic=True, color=DARK, size=9)
                 return True
         return False
 
@@ -2039,7 +2039,7 @@ def _build_docx_inner(
         value = _docx_unwrap(value)
         if value in (None, "", [], {}, "__BRAK__"):
             value = "[brak danych]"
-            val_color = LGREY
+            val_color = DARK
         p = doc.add_paragraph()
         rl = p.add_run(f"{label}: ")
         rl.bold = True
@@ -2055,7 +2055,7 @@ def _build_docx_inner(
         p.paragraph_format.space_before = Pt(2)
         r = p.add_run("─" * 72)
         r.font.size = Pt(7)
-        r.font.color.rgb = LGREY
+        r.font.color.rgb = DARK
 
     def insert_photo(b64: str, caption: str, width_cm: float = 14.0):
         if not b64:
@@ -2069,7 +2069,7 @@ def _build_docx_inner(
             for r in cap.runs:
                 r.font.size = Pt(8)
                 r.font.italic = True
-                r.font.color.rgb = GREY
+                r.font.color.rgb = DARK
         except Exception as e:
             current_app.logger.warning("[psych-docx] Błąd wstawiania zdjęcia: %s", e)
 
@@ -2088,13 +2088,13 @@ def _build_docx_inner(
     p_adr.alignment = WD_ALIGN_PARAGRAPH.CENTER
     for r in p_adr.runs:
         r.font.size = Pt(9)
-        r.font.color.rgb = GREY
+        r.font.color.rgb = DARK
 
     p_odd = doc.add_paragraph(szpital.get("oddzial", ""))
     p_odd.alignment = WD_ALIGN_PARAGRAPH.CENTER
     for r in p_odd.runs:
         r.font.size = Pt(9)
-        r.font.color.rgb = GREY
+        r.font.color.rgb = DARK
 
     doc.add_paragraph()
 
@@ -2112,7 +2112,7 @@ def _build_docx_inner(
     nr_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     for r in nr_p.runs:
         r.font.size = Pt(9)
-        r.font.color.rgb = GREY
+        r.font.color.rgb = DARK
 
     separator()
 
@@ -2125,11 +2125,11 @@ def _build_docx_inner(
         para(
             "[BŁĄD GENEROWANIA DANYCH PACJENTA]",
             italic=True,
-            color=LGREY,
+            color=DARK,
             size=9,
         )
     elif isinstance(dp, dict) and "__raw_text__" in dp:
-        para(dp["__raw_text__"], italic=True, color=GREY, size=9)
+        para(dp["__raw_text__"], italic=True, color=DARK, size=9)
     else:
         if not isinstance(dp, dict):
             current_app.logger.warning(
@@ -2147,7 +2147,7 @@ def _build_docx_inner(
     doc.add_paragraph()
 
     if photo_pacjent_b64:
-        heading("DOKUMENTACJA FOTOGRAFICZNA — PRZYJĘCIE", 3, GREY, 9)
+        heading("DOKUMENTACJA FOTOGRAFICZNA — PRZYJĘCIE", 3, DARK, 9)
         insert_photo(
             photo_pacjent_b64,
             "Fot. 1 — Pacjent w kaftanie bezpieczeństwa. Oddział B. Materiał dowodowy.",
@@ -2166,7 +2166,7 @@ def _build_docx_inner(
         para(
             "[brak danych — sekcja nie została wygenerowana]",
             italic=True,
-            color=LGREY,
+            color=DARK,
             size=9,
         )
     else:
@@ -2183,23 +2183,23 @@ def _build_docx_inner(
             para(
                 "[BŁĄD GENEROWANIA]",
                 italic=True,
-                color=LGREY,
+                color=DARK,
                 size=9,
             )
         elif "__raw_text__" in cytaty:
-            para(cytaty["__raw_text__"], italic=True, color=GREY, size=9)
+            para(cytaty["__raw_text__"], italic=True, color=DARK, size=9)
         else:
             para(
                 "[brak danych — cytaty nie zostały wygenerowane]",
                 italic=True,
-                color=LGREY,
+                color=DARK,
                 size=9,
             )
     elif not cytaty or cytaty == "__BRAK__":
         para(
             "[brak danych — cytaty nie zostały wygenerowane]",
             italic=True,
-            color=LGREY,
+            color=DARK,
             size=9,
         )
     elif isinstance(cytaty, list):
@@ -2213,13 +2213,18 @@ def _build_docx_inner(
                     c.get("nota") or c.get("komentarz") or c.get("comment") or c.get("note") or ""
                 )
                 if cytat_txt and str(cytat_txt).strip() not in ("", "__BRAK__"):
-                    para(u"\u201e" + str(cytat_txt) + u"\u201d", italic=True, color=GREY, size=9)
+                    para(
+                        "\u201e" + str(cytat_txt) + "\u201d",
+                        italic=True,
+                        color=DARK,
+                        size=9,
+                    )
                 if nota_txt and str(nota_txt).strip() not in ("", "__BRAK__"):
-                    para(f"↳ {nota_txt}", italic=False, color=LGREY, size=8)
+                    para(f"↳ {nota_txt}", italic=False, color=DARK, size=8)
             elif c and str(c).strip() not in ("", "__BRAK__"):
-                para(str(c), italic=True, color=GREY, size=9)
+                para(str(c), italic=True, color=DARK, size=9)
     else:
-        para(str(cytaty), italic=True, color=GREY, size=9)
+        para(str(cytaty), italic=True, color=DARK, size=9)
     doc.add_paragraph()
     separator()
 
@@ -2255,16 +2260,16 @@ def _build_docx_inner(
             para(
                 "[brak danych — lista przedmiotów nie została wygenerowana]",
                 italic=True,
-                color=LGREY,
+                color=DARK,
                 size=9,
             )
         if proto and proto != "__BRAK__":
             doc.add_paragraph()
-            para(proto, italic=True, color=GREY, size=9)
+            para(proto, italic=True, color=DARK, size=9)
     doc.add_paragraph()
 
     if photo_przedmioty_b64:
-        heading("DOKUMENTACJA FOTOGRAFICZNA — DOWODY RZECZOWE", 3, GREY, 9)
+        heading("DOKUMENTACJA FOTOGRAFICZNA — DOWODY RZECZOWE", 3, DARK, 9)
         insert_photo(
             photo_przedmioty_b64,
             "Fot. 2 — Przedmioty skonfiskowane przy przyjęciu. "
@@ -2279,6 +2284,16 @@ def _build_docx_inner(
     # ══════════════════════════════════════════════════════════════════════════
     heading("V. FARMAKOLOGIA — PEŁNA LISTA LEKÓW ZASTOSOWANYCH", 2, RED, 11)
     farm = raport.get("farmakologia", {})
+    depozyt = (
+        raport.get("depozyt", {}) if isinstance(raport.get("depozyt", {}), dict) else {}
+    )
+    depozyt_lista = depozyt.get("lista_przedmiotow", [])
+    if isinstance(depozyt_lista, str):
+        depozyt_lista = [x.strip() for x in depozyt_lista.split(",") if x.strip()]
+    depozyt_lista = [
+        str(x) for x in depozyt_lista if str(x).strip() not in ("", "__BRAK__")
+    ]
+
     if _docx_render_error_or_raw(farm):
         doc.add_paragraph()
         leki_lista = []
@@ -2322,7 +2337,11 @@ def _build_docx_inner(
                 continue
             row = t.add_row().cells
             row[0].text = str(lek.get("nazwa", ""))
-            row[1].text = str(lek.get("rzeczownik_zrodlowy", ""))
+            if depozyt_lista:
+                source_text = "; ".join(depozyt_lista)
+            else:
+                source_text = str(lek.get("rzeczownik_zrodlowy", "") or "").strip()
+            row[1].text = source_text
             row[2].text = str(lek.get("wskazanie", ""))
             row[3].text = str(lek.get("dawkowanie", ""))
             for cell in row:
@@ -2334,14 +2353,14 @@ def _build_docx_inner(
         para(
             "[brak danych — lista leków nie została wygenerowana]",
             italic=True,
-            color=LGREY,
+            color=DARK,
             size=9,
         )
         doc.add_paragraph()
 
     nota_farm = farm.get("nota_farmaceutyczna", "") if isinstance(farm, dict) else ""
     if nota_farm:
-        para(nota_farm, italic=True, color=GREY, size=9)
+        para(nota_farm, italic=True, color=DARK, size=9)
 
     doc.add_paragraph()
     separator()
@@ -2396,7 +2415,7 @@ def _build_docx_inner(
             r_nota = p_nota.add_run(f"↳ {nota}")
             r_nota.italic = True
             r_nota.font.size = Pt(8)
-            r_nota.font.color.rgb = GREY
+            r_nota.font.color.rgb = DARK
 
     doc.add_paragraph()
     separator()
@@ -2432,7 +2451,7 @@ def _build_docx_inner(
             para(str(zal), size=10)
         doc.add_paragraph()
         if wypis.get("opis_pozegnania"):
-            para(wypis["opis_pozegnania"], italic=True, color=GREY, size=9)
+            para(wypis["opis_pozegnania"], italic=True, color=DARK, size=9)
     doc.add_paragraph()
     separator()
 
@@ -2538,7 +2557,7 @@ def _build_docx_inner(
                 p_z.add_run(str(zadanie_val)).font.size = Pt(10)
         if zt.get("podpis"):
             doc.add_paragraph()
-            para(zt["podpis"], italic=True, color=GREY, size=9)
+            para(zt["podpis"], italic=True, color=DARK, size=9)
     doc.add_paragraph()
     separator()
 
@@ -2637,15 +2656,15 @@ def _build_docx_inner(
                         r_hdr.font.color.rgb = DARK
 
                     if tresc:
-                        para(tresc, italic=True, color=GREY, size=8)
+                        para(tresc, italic=True, color=DARK, size=8)
                 else:
                     if str(sw) != "__BRAK__":
-                        para(str(sw), italic=True, color=GREY, size=9)
+                        para(str(sw), italic=True, color=DARK, size=9)
         else:
-            para(str(relacje_swiadkow), italic=True, color=GREY, size=9)
+            para(str(relacje_swiadkow), italic=True, color=DARK, size=9)
         doc.add_paragraph()
     else:
-        para("Brak relacji świadków w dokumentacji.", italic=True, color=GREY, size=9)
+        para("Brak relacji świadków w dokumentacji.", italic=True, color=DARK, size=9)
     doc.add_paragraph()
     separator()
 
@@ -2677,12 +2696,12 @@ def _build_docx_inner(
                         r_hdr.font.size = Pt(8)
                         r_hdr.font.color.rgb = DARK
                     if tresc:
-                        para(tresc, italic=True, color=GREY, size=8)
+                        para(tresc, italic=True, color=DARK, size=8)
                 else:
                     if str(n) != "__BRAK__":
-                        para(str(n), italic=True, color=GREY, size=9)
+                        para(str(n), italic=True, color=DARK, size=9)
         else:
-            para(str(notatki_p), italic=True, color=GREY, size=9)
+            para(str(notatki_p), italic=True, color=DARK, size=9)
         doc.add_paragraph()
 
     notatki_s = raport.get("notatki_sprzataczki") or raport.get("notatka_sprzataczki")
@@ -2704,14 +2723,39 @@ def _build_docx_inner(
                         r_hdr.font.size = Pt(8)
                         r_hdr.font.color.rgb = DARK
                     if tresc:
-                        para(tresc, italic=True, color=GREY, size=8)
+                        para(tresc, italic=True, color=DARK, size=8)
                 else:
                     if str(n) != "__BRAK__":
-                        para(str(n), italic=True, color=GREY, size=9)
+                        para(str(n), italic=True, color=DARK, size=9)
         else:
-            para(str(notatki_s), italic=True, color=GREY, size=9)
+            para(str(notatki_s), italic=True, color=DARK, size=9)
 
     # ══════════════════════════════════════════════════════════════════════════
+    # Krzyżówka pacjenta
+    try:
+        from responders.scrabble import build_scrabble_section
+
+        scrabble_result = build_scrabble_section(body)
+        scrabble_image = None
+        if isinstance(scrabble_result, dict):
+            image_data = (
+                scrabble_result.get("image")
+                or (scrabble_result.get("images") or [None])[0]
+            )
+            if isinstance(image_data, dict):
+                scrabble_image = image_data.get("base64")
+        if scrabble_image:
+            heading("Krzyżówka przygotowana przez pacjenta:", 3, RED, 10)
+            insert_photo(
+                scrabble_image,
+                "Krzyżówka przygotowana przez pacjenta.",
+            )
+            doc.add_paragraph()
+    except Exception as e:
+        current_app.logger.warning(
+            "[psych-docx] Nie udało się wygenerować krzyżówki: %s", e
+        )
+
     # ZAPIS
     # ══════════════════════════════════════════════════════════════════════════
     buf = io.BytesIO()

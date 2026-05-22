@@ -1,0 +1,127 @@
+# SZYBKI START — Generator Krzyżówek
+
+## 1. Instalacja zależności (raz na początek)
+
+```bash
+# Otwórz terminal/PowerShell w katalogu Krzyzowka
+cd Krzyzowka
+
+# Zainstaluj pakiety
+pip install -r requirements_krzyzowka.txt
+```
+
+Wymagane:
+- **PySide6** — GUI
+- **openpyxl** — Excel
+- **Pillow** — PNG
+
+---
+
+## 2. Uruchomienie
+
+### Opcja A: Interfejs graficzny (łatwe)
+
+```bash
+python main.py
+```
+
+Lub:
+
+```bash
+python gui_main.py
+```
+
+Następnie:
+1. Ustaw rozmiar (domyślnie 15×15)
+2. Wybierz plik słów (lub pozostaw domyślny `dane.txt`)
+3. Kliknij "Generuj Krzyżówkę"
+4. Czekaj... wyniki będą w `WYNIKI_*/`
+
+---
+
+### Opcja B: Wiersz poleceń (szybko)
+
+```bash
+# Proste: 15x15 krzyżówka z 3 wariantami
+python main.py --cli 15 15
+
+# Z własnym plikiem
+python main.py --cli 12 12 /path/to/slowa.txt
+```
+
+---
+
+## 3. Wyniki
+
+Po wygenerowaniu pojawi się katalog **`WYNIKI_data_godzina_nazwa/`**
+
+Zawartość:
+- ✓ `krizowka.xlsx` — Plik Excel (siatka + pytania)
+- ✓ `krizowka.html` — Strona HTML (do przeglądu/druku)
+- ✓ `001_completed.png`, `002_completed.png`, `003_completed.png` — Grafiki UZUPEŁNIONE (z literami)
+- ✓ `001_blank.png`, `002_blank.png`, `003_blank.png` — Grafiki PUSTE (do wypełniania)
+- ✓ `001.txt`, `002.txt`, `003.txt` — Pytania (3 warianty)
+
+---
+
+## 4. Format bazy słów
+
+Plik `baza.txt` (lub `dane.txt`):
+
+```
+WYRAZ Definicja lub podpowiedź
+NAUKA Zdobywanie nowej wiedzy
+PRACA Zarobkowe zajęcie
+```
+
+Jeden wyraz na linię: `WYRAZ OPIS`
+
+---
+
+## 5. Domyślne ustawienia
+
+| Parametr | Wartość | Gdzie zmienić |
+|----------|---------|---------------|
+| Rozmiar siatki | 15×15 | GUI / CLI argument |
+| Plik słów | `dane.txt` | GUI browse / CLI argument |
+| Liczba wariantów | 3 | GUI spinner |
+| Liczba prób | 50 | `crossword_generator.py` `max_attempts` |
+
+---
+
+## 6. Szybkie testy
+
+Test małej krzyżówki (5 minut):
+
+```bash
+python main.py --cli 8 8 baza.txt
+```
+
+Test pełny (10-15 minut):
+
+```bash
+python main.py --cli 15 15 baza.txt
+```
+
+---
+
+## 7. Troubleshooting
+
+| Problem | Rozwiązanie |
+|---------|-------------|
+| `ModuleNotFoundError: PySide6` | `pip install PySide6` |
+| Generator zbyt wolny | Zmniejsz rozmiar lub `max_attempts` |
+| Niska gęstość krzyżówki | Rozszerz bazę słów |
+| Błąd kodowania (Windows) | `$env:PYTHONIOENCODING = 'utf-8'` |
+
+---
+
+## 8. Więcej informacji
+
+Patrz: `README.md`
+
+---
+
+## Kontakt
+
+Projektu: Silnik Scrabble ze słownikiem
