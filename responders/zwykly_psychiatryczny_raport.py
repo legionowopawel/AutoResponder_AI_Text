@@ -2075,6 +2075,9 @@ def _build_docx_inner(
         r.font.size = Pt(7)
         r.font.color.rgb = DARK
 
+    # Flaga informująca, czy obrazy Flux (jpg) zostały już wstawione
+    flux_images_rendered = False
+
     def insert_photo(b64: str, caption: str, width_cm: float = 14.0):
         if not b64:
             return
@@ -2090,6 +2093,62 @@ def _build_docx_inner(
                 r.font.color.rgb = DARK
         except Exception as e:
             current_app.logger.warning("[psych-docx] Błąd wstawiania zdjęcia: %s", e)
+
+    def insert_images_grid(images: list[tuple], width_cm: float = 7.0):
+        """Wstaw listę obrazków (b64, caption) w tabeli 2 kolumny na wiersz.
+        Każde zdjęcie dostaje podpis pod nim. width_cm to szerokość pojedynczego obrazka.
+        """
+        if not images:
+            return
+        cols = 2
+        rows = (len(images) + cols - 1) // cols
+        table = doc.add_table(rows=rows * 2, cols=cols)
+        table.style = "Table Grid"
+        # Używamy naprzemiennie wierszy: wiersz obrazków, wiersz podpisów
+        idx = 0
+        for r in range(0, rows * 2, 2):
+            img_row = table.rows[r].cells
+            cap_row = table.rows[r + 1].cells
+            for c in range(cols):
+                if idx >= len(images):
+                    # puste komórki — zostaw
+                    idx += 1
+                    continue
+                b64, caption = images[idx]
+                try:
+                    img_bytes = base64.b64decode(b64)
+                    stream = io.BytesIO(img_bytes)
+                    # Wstaw obrazek do akapitu w komórce
+                    p = img_row[c].paragraphs[0]
+                    run = p.add_run()
+                    run.add_picture(stream, width=Cm(width_cm))
+                except Exception as e:
+                    current_app.logger.warning(
+                        "[psych-docx] Błąd wstawiania obrazka do siatki: %s", e
+                    )
+                # podpis
+                cap_p = cap_row[c].paragraphs[0]
+                cap_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                cap_p.clear()
+                cap_run = cap_p.add_run(str(caption))
+                cap_run.font.size = Pt(8)
+                cap_run.font.italic = True
+                cap_run.font.color.rgb = DARK
+                idx += 1
+        # małe odstępy po tabeli
+        doc.add_paragraph()
+
+    def _gendered_created_verb(fullname: str) -> str:
+        """Prosty heurystyczny wybór formy czasownika 'utworzyć' dla rodzajów.
+        Jeśli imię (pierwsze słowo) kończy się na 'a' przyjmujemy że to forma żeńska.
+        W przeciwnym razie używamy formy męskiej. Jeśli brak imienia — zwracamy neutralną parę.
+        """
+        if not fullname or not isinstance(fullname, str):
+            return "utworzył/utworzyła"
+        name = fullname.strip().split()[0]
+        if name.lower().endswith("a"):
+            return "utworzyła"
+        return "utworzył"
 
     # ══════════════════════════════════════════════════════════════════════════
     # NAGŁÓWEK SZPITALA
@@ -2164,14 +2223,27 @@ def _build_docx_inner(
         field("Nr ubezpieczenia", dp.get("numer_ubezpieczenia", ""))
     doc.add_paragraph()
 
-    if photo_pacjent_b64:
+    if photo_pacjent_b64 or photo_przedmioty_b64:
         heading("DOKUMENTACJA FOTOGRAFICZNA — PRZYJĘCIE", 3, DARK, 9)
-        insert_photo(
-            photo_pacjent_b64,
-            prompt_pacjent
-            or "Fot. 1 — Zdjęcie pacjenta wygenerowane na podstawie prompta.",
-        )
-        doc.add_paragraph()
+        # Jeśli mamy oba obrazy flux (jpg), wstaw je siatkowo 2 kolumny
+        if photo_pacjent_b64 and photo_przedmioty_b64 and not flux_images_rendered:
+            imgs = [
+                (photo_pacjent_b64, prompt_pacjent or "Zdjęcie pacjenta."),
+                (
+                    photo_przedmioty_b64,
+                    prompt_przedmioty or "Zdjęcie dowodów rzeczowych.",
+                ),
+            ]
+            insert_images_grid(imgs, width_cm=7.0)
+            flux_images_rendered = True
+        else:
+            if photo_pacjent_b64 and not flux_images_rendered:
+                insert_photo(
+                    photo_pacjent_b64,
+                    prompt_pacjent
+                    or "Fot. 1 — Zdjęcie pacjenta wygenerowane na podstawie prompta.",
+                )
+                doc.add_paragraph()
 
     separator()
 
@@ -2289,11 +2361,23 @@ def _build_docx_inner(
 
     if photo_przedmioty_b64:
         heading("DOKUMENTACJA FOTOGRAFICZNA — DOWODY RZECZOWE", 3, DARK, 9)
-        insert_photo(
-            photo_przedmioty_b64,
-            prompt_przedmioty
-            or "Fot. 2 — Zdjęcie dowodów rzeczowych wygenerowane na podstawie prompta.",
-        )
+        if photo_przedmioty_b64 and photo_pacjent_b64 and not flux_images_rendered:
+            imgs = [
+                (photo_pacjent_b64, prompt_pacjent or "Zdjęcie pacjenta."),
+                (
+                    photo_przedmioty_b64,
+                    prompt_przedmioty or "Zdjęcie dowodów rzeczowych.",
+                ),
+            ]
+            insert_images_grid(imgs, width_cm=7.0)
+            flux_images_rendered = True
+        else:
+            if photo_przedmioty_b64 and not flux_images_rendered:
+                insert_photo(
+                    photo_przedmioty_b64,
+                    prompt_przedmioty
+                    or "Fot. 2 — Zdjęcie dowodów rzeczowych wygenerowane na podstawie prompta.",
+                )
         doc.add_paragraph()
 
     separator()
@@ -2763,10 +2847,19 @@ def _build_docx_inner(
             if isinstance(image_data, dict):
                 scrabble_image = image_data.get("base64")
         if scrabble_image:
-            heading("Krzyżówka przygotowana przez pacjenta:", 3, RED, 10)
+            # Dodaj rozdział informujący że pacjent utworzył krzyżówkę
+            name = (
+                dp.get("imie_nazwisko", "pacjent")
+                if isinstance(dp, dict)
+                else "pacjent"
+            )
+            verb = _gendered_created_verb(name)
+            heading(f"Pacjent {name} {verb} krzyżówkę:", 3, RED, 10)
+            # Wstaw PNG krzyżówki pomniejszone do 70% domyślnej szerokości (14cm)
             insert_photo(
                 scrabble_image,
-                "Krzyżówka przygotowana przez pacjenta.",
+                "",
+                width_cm=(14.0 * 0.7),
             )
             doc.add_paragraph()
     except Exception as e:
