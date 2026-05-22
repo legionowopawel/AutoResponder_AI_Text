@@ -1910,6 +1910,8 @@ def _build_docx(
     raport: dict,
     photo_pacjent_b64: str | None,
     photo_przedmioty_b64: str | None,
+    prompt_pacjent: str,
+    prompt_przedmioty: str,
     cfg: dict,
 ) -> str | None:
     """Buduje DOCX z całym raportem — zwraca base64 lub None."""
@@ -1922,7 +1924,14 @@ def _build_docx(
         return None
 
     try:
-        return _build_docx_inner(raport, photo_pacjent_b64, photo_przedmioty_b64, cfg)
+        return _build_docx_inner(
+            raport,
+            photo_pacjent_b64,
+            photo_przedmioty_b64,
+            prompt_pacjent,
+            prompt_przedmioty,
+            cfg,
+        )
     except Exception as e:
         current_app.logger.error(
             "[psych-docx] Nieoczekiwany błąd budowania DOCX: %s", e, exc_info=True
@@ -1934,6 +1943,8 @@ def _build_docx_inner(
     raport: dict,
     photo_pacjent_b64: str | None,
     photo_przedmioty_b64: str | None,
+    prompt_pacjent: str,
+    prompt_przedmioty: str,
     cfg: dict,
 ) -> str | None:
     """Wewnętrzna implementacja — wywoływana przez _build_docx z ochronnym try/except."""
@@ -2150,7 +2161,8 @@ def _build_docx_inner(
         heading("DOKUMENTACJA FOTOGRAFICZNA — PRZYJĘCIE", 3, DARK, 9)
         insert_photo(
             photo_pacjent_b64,
-            "Fot. 1 — Pacjent w kaftanie bezpieczeństwa. Oddział B. Materiał dowodowy.",
+            prompt_pacjent
+            or "Fot. 1 — Zdjęcie pacjenta wygenerowane na podstawie prompta.",
         )
         doc.add_paragraph()
 
@@ -2272,8 +2284,8 @@ def _build_docx_inner(
         heading("DOKUMENTACJA FOTOGRAFICZNA — DOWODY RZECZOWE", 3, DARK, 9)
         insert_photo(
             photo_przedmioty_b64,
-            "Fot. 2 — Przedmioty skonfiskowane przy przyjęciu. "
-            "Protokół dowodów rzeczowych, Oddział B.",
+            prompt_przedmioty
+            or "Fot. 2 — Zdjęcie dowodów rzeczowych wygenerowane na podstawie prompta.",
         )
         doc.add_paragraph()
 
@@ -2337,10 +2349,9 @@ def _build_docx_inner(
                 continue
             row = t.add_row().cells
             row[0].text = str(lek.get("nazwa", ""))
-            if depozyt_lista:
-                source_text = "; ".join(depozyt_lista)
-            else:
-                source_text = str(lek.get("rzeczownik_zrodlowy", "") or "").strip()
+            source_text = str(lek.get("rzeczownik_zrodlowy", "") or "").strip()
+            if ";" in source_text:
+                source_text = source_text.split(";")[0].strip()
             row[1].text = source_text
             row[2].text = str(lek.get("wskazanie", ""))
             row[3].text = str(lek.get("dawkowanie", ""))
@@ -3250,7 +3261,14 @@ def build_raport(
     # Budowanie DOCX
     photo_1_b64 = photo_1["base64"] if photo_1 else None
     photo_2_b64 = photo_2["base64"] if photo_2 else None
-    docx_b64 = _build_docx(raport, photo_1_b64, photo_2_b64, cfg)
+    docx_b64 = _build_docx(
+        raport,
+        photo_1_b64,
+        photo_2_b64,
+        prompt_pacjent,
+        prompt_przedmioty,
+        cfg,
+    )
 
     if not docx_b64:
         current_app.logger.error("[psych-raport] DOCX nie wygenerowany")
