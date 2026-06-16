@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>Sprawa nr 26: Zagadka z Wypożyczalni Rowerów</title>
+<style>
+  :root{
+    --paper:#f1e9d8;
+    --paper-dark:#e3d6b8;
+    --ink:#2b2520;
+    --ink-soft:#5b5247;
+    --raincoat:#8a8275;
+    --cigar:#b5742a;
+    --case-red:#9c2b2b;
+    --good:#3f6b3f;
+    --bad:#9c2b2b;
+    --line:#c9bb98;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(0,0,0,0.03), transparent 40%),
+      radial-gradient(circle at 80% 90%, rgba(0,0,0,0.04), transparent 40%);
+    color:var(--ink);
+    font-family: Georgia, 'Times New Roman', serif;
+    line-height:1.5;
+    padding:0 0 60px 0;
+  }
+  .header{
+    background:var(--ink);
+    color:var(--paper);
+    padding:28px 20px 22px;
+    text-align:center;
+    border-bottom:6px solid var(--cigar);
+    position:relative;
+  }
+  .badge{
+    display:inline-block;
+    font-family: 'Courier New', monospace;
+    font-size:12px;
+    letter-spacing:3px;
+    background:var(--case-red);
+    color:#fff;
+    padding:4px 10px;
+    border-radius:2px;
+    margin-bottom:10px;
+  }
+  .header h1{
+    margin:0;
+    font-size:28px;
+    font-weight:700;
+    letter-spacing:0.5px;
+  }
+  .header p{
+    margin:8px auto 0;
+    max-width:560px;
+    font-size:14px;
+    color:var(--paper-dark);
+    font-style:italic;
+  }
+  .case-file{
+    max-width:680px;
+    margin:24px auto 0;
+    background:#fffdf8;
+    border:1px solid var(--line);
+    border-left:6px solid var(--cigar);
+    box-shadow:0 4px 14px rgba(0,0,0,0.12);
+    padding:20px 22px;
+    border-radius:2px;
+  }
+  .case-file h2{
+    margin:0 0 8px;
+    font-size:16px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    color:var(--case-red);
+  }
+  .case-file p{margin:0 0 8px; font-size:15px; color:var(--ink-soft);}
+  .case-file p:last-child{margin-bottom:0;}
+  #score-bar{
+    max-width:680px;
+    margin:18px auto 0;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-family:'Courier New', monospace;
+    font-size:13px;
+    color:var(--ink-soft);
+    padding:0 4px;
+  }
+  #progress-track{
+    flex:1;
+    height:8px;
+    background:var(--paper-dark);
+    border-radius:4px;
+    margin:0 14px;
+    overflow:hidden;
+    border:1px solid var(--line);
+  }
+  #progress-fill{
+    height:100%;
+    width:0%;
+    background:var(--cigar);
+    transition:width .3s ease;
+  }
+  main{
+    max-width:680px;
+    margin:0 auto;
+    padding:0 20px;
+  }
+  .q-card{
+    background:#fffdf8;
+    border:1px solid var(--line);
+    border-radius:6px;
+    box-shadow:0 3px 10px rgba(0,0,0,0.08);
+    margin:22px 0;
+    padding:20px 20px 18px;
+  }
+  .q-meta{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    margin-bottom:8px;
+  }
+  .q-num{
+    font-family:'Courier New', monospace;
+    font-size:12px;
+    color:#fff;
+    background:var(--ink);
+    padding:2px 8px;
+    border-radius:10px;
+  }
+  .q-subject{
+    font-size:11px;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    color:var(--cigar);
+    font-weight:bold;
+  }
+  .q-text{
+    font-size:17px;
+    margin:6px 0 14px;
+    color:var(--ink);
+  }
+  .options{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .opt-btn{
+    text-align:left;
+    background:var(--paper);
+    border:1.5px solid var(--line);
+    border-radius:5px;
+    padding:10px 14px;
+    font-size:15px;
+    font-family:inherit;
+    color:var(--ink);
+    cursor:pointer;
+    transition:background .15s, border-color .15s, transform .05s;
+  }
+  .opt-btn:hover{
+    background:var(--paper-dark);
+    border-color:var(--cigar);
+  }
+  .opt-btn:active{transform:scale(0.99);}
+  .opt-btn.correct{
+    background:#e3ecdf;
+    border-color:var(--good);
+    color:var(--good);
+    font-weight:bold;
+  }
+  .opt-btn.wrong{
+    background:#f4e0e0;
+    border-color:var(--bad);
+    color:var(--bad);
+    font-weight:bold;
+  }
+  .opt-btn[disabled]{cursor:default;}
+  .explain{
+    margin-top:14px;
+    padding:12px 14px;
+    border-radius:5px;
+    font-size:14.5px;
+    display:none;
+    border:1px dashed var(--line);
+    background:#faf6ec;
+  }
+  .explain.show{display:block;}
+  .explain.right-feel{border-color:var(--good); background:#eef5ec;}
+  .explain.wrong-feel{border-color:var(--bad); background:#f7ecec;}
+  .explain b{color:var(--cigar);}
+  .signature{
+    margin-top:10px;
+    font-style:italic;
+    color:var(--ink-soft);
+    font-size:13.5px;
+    text-align:right;
+  }
+  #final{
+    display:none;
+    max-width:680px;
+    margin:30px auto 0;
+    background:var(--ink);
+    color:var(--paper);
+    border-radius:8px;
+    padding:26px 24px;
+    text-align:center;
+  }
+  #final h2{margin-top:0; color:var(--paper-dark);}
+  #final .stamp{
+    font-size:46px;
+    margin:6px 0;
+  }
+  #restart-btn{
+    margin-top:16px;
+    background:var(--cigar);
+    color:#fff;
+    border:none;
+    padding:10px 20px;
+    border-radius:5px;
+    font-size:15px;
+    cursor:pointer;
+    font-family:inherit;
+  }
+  footer{
+    text-align:center;
+    font-size:12px;
+    color:var(--ink-soft);
+    margin-top:30px;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <span class="badge">SPRAWA NR 26 &mdash; AKTA POUFNE</span>
+  <h1>Porucznik Columbo i tajemnica zniknionych rowerów</h1>
+  <p>Ej, jeszcze jedna rzecz... zanim zaczniemy, muszę Ci opowiedzieć, co się stało.</p>
+</div>
+
+<div class="case-file">
+  <h2>Notatki z notesu Columbo</h2>
+  <p>W miasteczku nad jeziorem, z wypożyczalni roweru przy molo, w nocy zniknęły trzy rowery i kasa z biletami. Właściciel wypożyczalni, pan Henderson, jest oburzony i wskazuje na swojego sąsiada. Ale porucznik Columbo, w swoim wytartym, pomarszczonym płaszczu, drapie się po głowie i mówi: &bdquo;Coś mi tu nie pasuje, proszę pana... same liczby się nie zgadzają&rdquo;.</p>
+  <p>Żeby pomóc Columbo rozwiązać tę zagadkę, musisz odpowiedzieć na 26 pytań z różnych dziedzin &mdash; matematyki, fizyki, chemii, polskiego, włoskiego (Columbo uwielbia włoską kuchnię!) i psychologii samego porucznika. Jeśli się pomylisz, nic się nie stanie &mdash; Columbo zawsze wszystko dokładnie wyjaśni. Detektywi się uczą na błędach!</p>
+</div>
+
+<div id="score-bar">
+  <span id="score-label">Punkty: 0 / 26</span>
+  <div id="progress-track"><div id="progress-fill"></div></div>
+  <span id="q-counter">Pytanie 1 / 26</span>
+</div>
+
+<main id="quiz-root"></main>
+
+<div id="final">
+  <h2>Sprawa zamknięta!</h2>
+  <div class="stamp">🔎🐶🚬</div>
+  <p id="final-text"></p>
+  <button id="restart-btn">Rozwiąż sprawę jeszcze raz</button>
+</div>
+
+<footer>Plik utworzony dla młodej detektywistki &mdash; fanki porucznika Columbo.</footer>
+
+<script>
+const Q = [
+{
+  subject:"Matematyka",
+  q:"Pan Henderson miał 3 rowery po 250 zł każdy i kasę z biletami wartą 80 zł. Jaka jest łączna wartość strat?",
+  opts:["750 zł","830 zł","580 zł","910 zł"],
+  correct:1,
+  explain:"3 rowery × 250 zł = 750 zł. Do tego dodajemy kasę: 750 zł + 80 zł = <b>830 zł</b>. Columbo zawsze najpierw liczy straty, zanim zacznie szukać winnego."
+},
+{
+  subject:"Matematyka",
+  q:"Świadek mówi, że widział złodzieja o 23:40, a strażnik zamknął molo o 22:15. Ile minut upłynęło między zamknięciem mola a momentem, gdy świadek widział złodzieja?",
+  opts:["95 minut","65 minut","85 minut","105 minut"],
+  correct:2,
+  explain:"Od 22:15 do 23:40 to 1 godzina i 25 minut, czyli 60 + 25 = <b>85 minut</b>. Columbo zawsze sprawdza, czy czasy się zgadzają &mdash; to jego ulubiona sztuczka!"
+},
+{
+  subject:"Fizyka",
+  q:"Rowery stały w zamkniętej szopie bez okien o objętości 20 m³. Jeśli jedna osoba zużywa około 1 m³ powietrza na godzinę, na jak długo wystarczy powietrza dla jednej osoby zamknięitej w takiej szopie?",
+  opts:["Na około 2 godziny","Na około 20 godzin","Na około 5 godzin","Na około 50 godzin"],
+  correct:1,
+  explain:"20 m³ powietrza ÷ 1 m³ na godzinę = <b>około 20 godzin</b>. Columbo wykazał się tą wiedzą w odcinku 'Try and Catch Me' (1977), gdzie obliczał, jak długo można przetrwać w zamkniętym, szczelnym pomieszczeniu o pojemności około 20 m³ powietrza."
+},
+{
+  subject:"Fizyka",
+  q:"Termometr w szopie pokazywał rano 15°C, a w południe temperatura wzrosła o 8°C. Jaka była temperatura w południe?",
+  opts:["7°C","23°C","21°C","19°C"],
+  correct:1,
+  explain:"15°C + 8°C = <b>23°C</b>. Columbo bardzo uważnie patrzy na termometry i temperatury &mdash; czasem to właśnie temperatura zdradza prawdę."
+},
+{
+  subject:"Fizyka",
+  q:"Pewnego upalnego dnia temperatura w Los Angeles wzrosła do 109°F. Ile to w przybliżeniu w stopniach Celsjusza? (wzór: °C = (°F-32) ÷ 1,8)",
+  opts:["około 33°C","około 43°C","około 53°C","około 23°C"],
+  correct:1,
+  explain:"(109 - 32) ÷ 1,8 = 77 ÷ 1,8 ≈ <b>43°C</b>. Columbo wykazał się tą wiedzą w odcinku 'Any Old Port in a Storm' (1973) &mdash; tego dnia temperatura w nieklimatyzowanej piwnicy z winem podskoczyła nawet ponad 65°C i zniszczyła cenną kolekcję wina, co pomogło porucznikowi rozwiązać sprawę!"
+},
+{
+  subject:"Fizyka",
+  q:"Rower przejechał 30 metrów w 6 sekund. Jaka była jego prędkość?",
+  opts:["3 m/s","6 m/s","5 m/s","8 m/s"],
+  correct:2,
+  explain:"Prędkość = droga ÷ czas = 30 m ÷ 6 s = <b>5 m/s</b>. Tak liczy się prędkość &mdash; to się przydaje, gdy trzeba sprawdzić, czy ktoś mógł dojechać na czas!"
+},
+{
+  subject:"Chemia",
+  q:"Woda zamarza w temperaturze 0°C. W jakiej temperaturze wrze (przy normalnym ciśnieniu)?",
+  opts:["50°C","100°C","80°C","120°C"],
+  correct:1,
+  explain:"Woda wrze przy <b>100°C</b>. To jedna z podstawowych właściwości wody, którą każdy detektyw powinien znać."
+},
+{
+  subject:"Chemia",
+  q:"Stare wino, zamiast się starzeć szlachetnie, zaczyna brązowieć i traci smak, gdy zbyt długo styka się z jakim gazem z powietrza?",
+  opts:["Azotem","Wodorem","Tlenem","Helem"],
+  correct:2,
+  explain:"To <b>tlen</b> &mdash; proces nazywa się utlenianiem (oksydacją). Dlatego wino przechowuje się w chłodnych, dobrze zakorkowanych miejscach. Columbo dowiedział się o tym właśnie w sprawie z winnicą!"
+},
+{
+  subject:"Chemia",
+  q:"Sól kuchenna (NaCl) składa się z sodu i jakiego pierwiastka?",
+  opts:["Siarki","Chloru","Węgla","Azotu"],
+  correct:1,
+  explain:"Sól to chlorek sodu, więc drugi pierwiastek to <b>chlor</b>. NaCl = Na (sód) + Cl (chlor)."
+},
+{
+  subject:"Matematyka",
+  q:"Columbo zapytał trzech świadków. Pierwszy mówił 12 minut, drugi 8 minut, trzeci 19 minut. Ile czasu zajęły wszystkie rozmowy razem?",
+  opts:["29 minut","39 minut","49 minut","41 minut"],
+  correct:1,
+  explain:"12 + 8 + 19 = <b>39 minut</b>. Czyli Columbo spędził z papierosem w ręku prawie 40 minut na rozmowach!"
+},
+{
+  subject:"Matematyka",
+  q:"Jeśli wypożyczalnia zarabia 15 zł za godzinę wypożyczenia jednego roweru, ile zarobi za 4 godziny wypożyczenia dwóch rowerów?",
+  opts:["60 zł","90 zł","120 zł","75 zł"],
+  correct:2,
+  explain:"15 zł × 4 godziny = 60 zł za jeden rower, a za dwa rowery: 60 zł × 2 = <b>120 zł</b>."
+},
+{
+  subject:"Matematyka",
+  q:"Złodziej zostawił odciski opon w piasku o długości 1,5 metra. Jeśli jedno koło robi pełny obrót na 1,5 metrach, ile w przybliżeniu wynosi obwód tego koła?",
+  opts:["1,5 m","3 m","0,75 m","2 m"],
+  correct:0,
+  explain:"Obwód koła to dokładnie ta odległość, jaką przejeżdża podczas jednego pełnego obrotu, czyli <b>1,5 m</b>. To prosty, ale ważny trik w fizyce ruchu!"
+},
+{
+  subject:"Język polski",
+  q:"Które słowo jest synonimem (czyli ma podobne znaczenie) do słowa 'detektyw'?",
+  opts:["Świadek","Śledczy","Podejrzany","Sąsiad"],
+  correct:1,
+  explain:"<b>Śledczy</b> to osoba, która prowadzi śledztwo, czyli bada sprawę &mdash; podobnie jak detektyw."
+},
+{
+  subject:"Język polski",
+  q:"W zdaniu: 'Columbo, drapiąc się po głowie, zadał ostatnie pytanie' &mdash; jaką częścią mowy jest słowo 'drapiąc'?",
+  opts:["Przymiotnik","Czasownik (imiesłów)","Rzeczownik","Przysłówek"],
+  correct:1,
+  explain:"To <b>imiesłów przysłówkowy współczesny</b> (forma czasownika), odpowiada na pytanie 'co robiąc?'. Columbo bardzo często 'coś robi, mówiąc coś innego' &mdash; to jego styl!"
+},
+{
+  subject:"Język polski",
+  q:"Jak nazywamy zagadkę kryminalną, w której od początku wiemy, kto jest winny, a śledzimy, jak detektyw to udowadnia? (Columbo właśnie taki jest!)",
+  opts:["Komedia","Tragedia","Powieść epistolarna","Historia 'jak go złapał' (howcatchem)"],
+  correct:3,
+  explain:"To tzw. <b>'howcatchem'</b> &mdash; w przeciwieństwie do klasycznego kryminału 'whodunit' (kto to zrobił), tu wiemy kto, a ciekawi nas JAK go złapią."
+},
+{
+  subject:"Język włoski",
+  q:"Columbo uwielbia włoską kuchnię. Jak po włosku powiemy 'dziękuję'?",
+  opts:["Per favore","Grazie","Buonasera","Scusi"],
+  correct:1,
+  explain:"<b>Grazie</b> znaczy 'dziękuję'. 'Per favore' to 'proszę', a 'buonasera' to 'dobry wieczór'."
+},
+{
+  subject:"Język włoski",
+  q:"Jak po włosku nazywa się makaron, który Columbo czasem wspomina rozmawiając o jedzeniu?",
+  opts:["Pasta","Pane","Vino","Formaggio"],
+  correct:0,
+  explain:"<b>Pasta</b> to włoskie słowo na makaron. 'Pane' to chleb, 'vino' to wino, a 'formaggio' to ser."
+},
+{
+  subject:"Język włoski",
+  q:"Co znaczy włoskie słowo 'Ciao'?",
+  opts:["Tylko 'cześć'","Tylko 'do widzenia'","I 'cześć' i 'do widzenia'","Smacznego"],
+  correct:2,
+  explain:"'Ciao' jest bardzo wygodne &mdash; można go używać i na powitanie, i na pożegnanie, czyli <b>i 'cześć', i 'do widzenia'</b>."
+},
+{
+  subject:"Psychologia (Columbo)",
+  q:"Dlaczego podejrzani w serialu zwykle nie boją się porucznika Columbo na początku rozmowy?",
+  opts:["Bo jest bardzo elegancki i groźny","Bo wydaje się rozkojarzony, niezdarny i niegroźny","Bo zawsze przychodzi w mundurze policyjnym","Bo nigdy nie zadaje pytań"],
+  correct:1,
+  explain:"To właśnie żart Columbo! Sprawia, że wydaje się <b>rozkojarzony i niegroźny</b> &mdash; w wytartym płaszczu, gubiąc notatki &mdash; dlatego podejrzani czują się bezpiecznie i mówią więcej, niż powinni."
+},
+{
+  subject:"Psychologia (Columbo)",
+  q:"Jak nazywa się znany trik Columbo, gdy już wychodzi z pokoju, a potem odwraca się i mówi 'jeszcze jedna rzecz...'?",
+  opts:["Trik na zaskoczenie podejrzanego dodatkowym pytaniem, gdy ten myśli, że rozmowa się skończyła","Sposób na pożegnanie się grzecznie","Metoda na przypomnienie sobie drogi do domu","Żart z jego psa"],
+  correct:0,
+  explain:"To jego słynna sztuczka psychologiczna: podejrzany rozluźnia się, myśląc, że przesłuchanie się skończyło, a wtedy Columbo zadaje <b>najważniejsze pytanie</b>, które naprawdę go zaskakuje."
+},
+{
+  subject:"Psychologia (Columbo)",
+  q:"Czemu noszenie starego, znoszonego płaszcza pomaga Columbo w pracy detektywa?",
+  opts:["Bo jest mu ciepło","Bo wygląda niegroźnie i ludzie nie traktują go jak zagrożenia, więc mówią szczerze","Bo to wymóg policyjny","Bo płaszcz ma kieszenie na broń"],
+  correct:1,
+  explain:"Znoszony płaszcz to część jego 'kostiumu' &mdash; sprawia, że <b>wydaje się nieważny i niegroźny</b>, więc podejrzani czują się swobodnie i popełniają błędy w rozmowie z nim."
+},
+{
+  subject:"Psychologia (Columbo)",
+  q:"Wielu bogatych i wykształconych podejrzanych w serialu z początku nie docenia Columbo. Dlaczego to jest błąd z ich strony?",
+  opts:["Bo Columbo jest naprawdę genialnym obserwatorem, mimo niezgrabnego wizerunku","Bo Columbo jest bogatszy niż oni","Bo Columbo ma lepszy samochód","Bo Columbo nigdy się nie myli w modzie"],
+  correct:0,
+  explain:"To główny żart serialu: pod niechlujnym wizerunkiem kryje się <b>bardzo bystry obserwator</b>, który zauważa najmniejsze szczegóły i niezgodności, których inni nie widzą."
+},
+{
+  subject:"Matematyka",
+  q:"Jeśli złodziej ukradł rower o 22:00, a Columbo przybył na miejsce 3 godziny i 15 minut później, o której godzinie przybył Columbo?",
+  opts:["01:00","01:15","00:45","01:30"],
+  correct:1,
+  explain:"22:00 + 3 godziny = 01:00, a potem + 15 minut = <b>01:15</b>. Columbo lubi liczyć minuty, bo czasem jedna minuta różnicy wystarcza, żeby wykryć fałszywe alibi!"
+},
+{
+  subject:"Fizyka",
+  q:"Stary samochód Columbo (Peugeot 403) waży około 1100 kg. Jeśli dodatkowo wsiądą do niego dwie osoby po 60 kg każda, jaka będzie łączna masa?",
+  opts:["1160 kg","1220 kg","1280 kg","1200 kg"],
+  correct:1,
+  explain:"1100 kg + 60 kg + 60 kg = <b>1220 kg</b>. Columbo naprawdę jeździł starym, charakterystycznym samochodem marki Peugeot 403 &mdash; to jeden z jego najbardziej znanych symboli w serialu."
+},
+{
+  subject:"Chemia",
+  q:"Dym z cygara, które często pojawia się w rękach Columbo, jest mieszaniną wielu substancji, w tym głównie jakiego gazu, który powstaje przy spalaniu?",
+  opts:["Tlenu","Dwutlenku węgla","Wodoru","Neonu"],
+  correct:1,
+  explain:"Podczas spalania (np. tytoniu w cygarze) powstaje głównie <b>dwutlenek węgla</b> (CO2), razem z innymi związkami. To podstawowa reakcja spalania, którą poznajemy na chemii."
+},
+{
+  subject:"Język polski",
+  q:"Jakim epitetem (przydomkiem) najczęściej opisuje się porucznika Columbo w recenzjach serialu?",
+  opts:["'Elegancki dżentelmen'","'Niezdarny, ale genialny detektyw'","'Najsilniejszy policjant na świecie'","'Tajemniczy milioner'"],
+  correct:1,
+  explain:"Columbo jest klasycznie opisywany jako <b>'niezdarny, ale genialny'</b> &mdash; to dokładnie ten kontrast, na którym opiera się cały żart postaci."
+}
+];
+
+let current = 0;
+let score = 0;
+const root = document.getElementById('quiz-root');
+const scoreLabel = document.getElementById('score-label');
+const qCounter = document.getElementById('q-counter');
+const progressFill = document.getElementById('progress-fill');
+const finalDiv = document.getElementById('final');
+const finalText = document.getElementById('final-text');
+
+function renderQuestion(i){
+  root.innerHTML = '';
+  const item = Q[i];
+  const card = document.createElement('div');
+  card.className = 'q-card';
+
+  const meta = document.createElement('div');
+  meta.className = 'q-meta';
+  meta.innerHTML = `<span class="q-num">Pytanie ${i+1}</span><span class="q-subject">${item.subject}</span>`;
+  card.appendChild(meta);
+
+  const qText = document.createElement('div');
+  qText.className = 'q-text';
+  qText.textContent = item.q;
+  card.appendChild(qText);
+
+  const optsWrap = document.createElement('div');
+  optsWrap.className = 'options';
+
+  const explainDiv = document.createElement('div');
+  explainDiv.className = 'explain';
+
+  item.opts.forEach((optText, idx)=>{
+    const btn = document.createElement('button');
+    btn.className = 'opt-btn';
+    btn.textContent = String.fromCharCode(65+idx) + ') ' + optText;
+    btn.addEventListener('click', ()=>{
+      const buttons = optsWrap.querySelectorAll('.opt-btn');
+      buttons.forEach(b=>b.disabled = true);
+      if(idx === item.correct){
+        btn.classList.add('correct');
+        score++;
+        explainDiv.classList.add('show','right-feel');
+        explainDiv.innerHTML = `✅ <b>Trafiłaś!</b> ${item.explain}<div class="signature">&mdash; Columbo</div>`;
+      } else {
+        btn.classList.add('wrong');
+        buttons[item.correct].classList.add('correct');
+        explainDiv.classList.add('show','wrong-feel');
+        explainDiv.innerHTML = `🕵️ <b>Nie tym razem, ale spokojnie.</b> ${item.explain}<div class="signature">&mdash; Columbo</div>`;
+      }
+      scoreLabel.textContent = `Punkty: ${score} / ${Q.length}`;
+
+      const nextBtn = document.createElement('button');
+      nextBtn.id = 'restart-btn';
+      nextBtn.style.marginTop = '14px';
+      nextBtn.textContent = (i+1 < Q.length) ? 'Następne pytanie →' : 'Zobacz wynik końcowy';
+      nextBtn.addEventListener('click', ()=>{
+        current++;
+        if(current < Q.length){
+          renderQuestion(current);
+        } else {
+          showFinal();
+        }
+      });
+      explainDiv.appendChild(nextBtn);
+    });
+    optsWrap.appendChild(btn);
+  });
+
+  card.appendChild(optsWrap);
+  card.appendChild(explainDiv);
+  root.appendChild(card);
+
+  qCounter.textContent = `Pytanie ${i+1} / ${Q.length}`;
+  progressFill.style.width = `${(i/Q.length)*100}%`;
+}
+
+function showFinal(){
+  root.innerHTML = '';
+  progressFill.style.width = '100%';
+  qCounter.textContent = `Pytanie ${Q.length} / ${Q.length}`;
+  finalDiv.style.display = 'block';
+  let msg;
+  if(score === Q.length){
+    msg = `Niesamowite! ${score} z ${Q.length} punktów &mdash; rozwiązałaś sprawę lepiej niż sam Columbo! Pan Henderson odzyskał rowery i kasę, a Ty zostajesz honorowym detektywem miasteczka.`;
+  } else if(score >= Q.length*0.7){
+    msg = `Świetna robota! ${score} z ${Q.length} punktów. Columbo mówi: "Pani zmysł obserwacji jest naprawdę dobry, jeszcze jedna sprawa rozwiązana!"`;
+  } else if(score >= Q.length*0.4){
+    msg = `Dobry początek! ${score} z ${Q.length} punktów. Każdy wielki detektyw zaczynał od mniejszych spraw &mdash; spróbuj jeszcze raz, a wytropisz wszystko!`;
+  } else {
+    msg = `Zdobyłaś ${score} z ${Q.length} punktów. Columbo czasem też się mylił, ale nigdy się nie poddawał &mdash; spróbuj jeszcze raz!`;
+  }
+  finalText.textContent = msg;
+}
+
+document.getElementById('restart-btn').addEventListener('click', ()=>{
+  current = 0; score = 0;
+  scoreLabel.textContent = `Punkty: 0 / ${Q.length}`;
+  finalDiv.style.display = 'none';
+  renderQuestion(0);
+});
+
+renderQuestion(0);
+</script>
+
+</body>
+</html>
