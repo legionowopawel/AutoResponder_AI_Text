@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Co zrobiłby Columbo? — Quiz dla Isabeli</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#f5f4f0;color:#1a1a1a;min-height:100vh}
+#app{padding:1rem;max-width:480px;margin:0 auto}
+.hero{text-align:center;padding:1.5rem 0 1rem}
+.hero img{width:160px;height:160px;object-fit:cover;border-radius:50%;border:3px solid #AFA9EC}
+.fallback-icon{width:160px;height:160px;border-radius:50%;background:#EEEDFE;border:3px solid #AFA9EC;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:72px}
+.hero h1{font-size:22px;font-weight:600;color:#26215C;margin:.75rem 0 .5rem}
+.hero p{font-size:14px;color:#5F5E5A;line-height:1.6;margin:0 .5rem}
+.progress-label{font-size:12px;color:#5F5E5A;margin-bottom:.5rem}
+.progress-bar{background:#D3D1C7;border-radius:99px;height:6px;margin:0 0 1rem}
+.progress-fill{background:#534AB7;height:6px;border-radius:99px;transition:width .4s}
+.question-card{background:#fff;border:1px solid #D3D1C7;border-radius:14px;padding:1.25rem;margin-bottom:1rem}
+.ep-badge{display:inline-block;font-size:11px;color:#534AB7;background:#EEEDFE;padding:3px 10px;border-radius:99px;margin-bottom:.75rem;font-weight:600}
+.q-text{font-size:15px;font-weight:600;color:#1a1a1a;line-height:1.5;margin-bottom:1rem}
+.option{display:flex;align-items:flex-start;gap:10px;padding:.75rem 1rem;border:1px solid #D3D1C7;border-radius:10px;margin-bottom:.5rem;cursor:pointer;transition:background .15s,border-color .15s;font-size:14px;color:#1a1a1a;line-height:1.5;background:#fff}
+.option:hover{background:#F1EFE8;border-color:#B4B2A9}
+.option .badge{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:#F1EFE8;border:1px solid #B4B2A9;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#5F5E5A}
+.option.correct{background:#EAF3DE;border-color:#3B6D11}
+.option.correct .badge{background:#3B6D11;color:#EAF3DE;border-color:#3B6D11}
+.option.wrong{background:#FCEBEB;border-color:#A32D2D}
+.option.wrong .badge{background:#A32D2D;color:#FCEBEB;border-color:#A32D2D}
+.option.disabled{cursor:default;pointer-events:none}
+.explanation{margin-top:.75rem;padding:.75rem;background:#F1EFE8;border-radius:8px;font-size:13px;color:#444441;line-height:1.6;display:none;border-left:3px solid #534AB7}
+.nav-btn{width:100%;padding:.75rem;border-radius:10px;border:1px solid #B4B2A9;background:#fff;font-size:15px;font-weight:600;color:#1a1a1a;cursor:pointer;margin-top:.5rem;display:none}
+.nav-btn:hover{background:#F1EFE8}
+.nav-btn.primary{background:#534AB7;color:#fff;border-color:#534AB7}
+.nav-btn.primary:hover{background:#3C3489}
+#result-screen{display:none;text-align:center;padding:1rem}
+.result-icon{font-size:64px;margin:.5rem 0}
+.result-score{font-size:42px;font-weight:700;color:#534AB7;margin:.5rem 0}
+.result-msg{font-size:15px;color:#5F5E5A;line-height:1.6;margin:.75rem 0 1.5rem;background:#EEEDFE;padding:1rem;border-radius:12px}
+.result-bars{text-align:left;margin:1rem 0;background:#fff;border:1px solid #D3D1C7;border-radius:12px;padding:1rem}
+.r-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:13px}
+.r-bar-row:last-child{margin-bottom:0}
+.r-bar-label{width:120px;color:#5F5E5A;flex-shrink:0}
+.r-bar-bg{flex:1;background:#F1EFE8;border-radius:99px;height:10px}
+.r-bar-fill{height:10px;border-radius:99px;background:#534AB7;transition:width .6s}
+.r-bar-score{min-width:32px;text-align:right;font-weight:600;color:#534AB7}
+.restart-btn{width:100%;padding:.85rem;border-radius:10px;background:#534AB7;color:#fff;border:none;font-size:15px;font-weight:600;cursor:pointer;margin-top:1rem}
+.restart-btn:hover{background:#3C3489}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="quiz-screen">
+    <div class="hero">
+      <img src="columbo.png" alt="Columbo" id="hero-img" onerror="document.getElementById('hero-img').style.display='none';document.getElementById('fallback-icon').style.display='flex'">
+      <div class="fallback-icon" id="fallback-icon" style="display:none">🕵️</div>
+      <h1>Co zrobiłby Columbo?</h1>
+      <p>Columbo to nie jest zwykły detektyw. W pogniecionej pelerynie, z papierosem w dłoni, zadaje <em>jedno małe pytanie</em> — i właśnie wtedy robi się niebezpiecznie dla mordercy. Isabela, czy odkryjesz dlaczego jest taki sprytny? Rozwiąż quiz i sprawdź!</p>
+    </div>
+
+    <div class="progress-label" id="prog-label">Pytanie 1 z 20</div>
+    <div class="progress-bar"><div class="progress-fill" id="prog-fill" style="width:5%"></div></div>
+
+    <div class="question-card" id="q-card">
+      <div class="ep-badge" id="ep-badge"></div>
+      <div class="q-text" id="q-text"></div>
+      <div id="options-container"></div>
+      <div class="explanation" id="explanation"></div>
+    </div>
+    <button class="nav-btn primary" id="next-btn" onclick="nextQ()">Następne pytanie →</button>
+  </div>
+
+  <div id="result-screen">
+    <div class="result-icon" id="res-icon"></div>
+    <div style="font-size:22px;font-weight:600;color:#26215C;margin:.5rem 0">Koniec quizu!</div>
+    <div class="result-score" id="res-score"></div>
+    <div class="result-msg" id="res-msg"></div>
+    <div class="result-bars">
+      <div class="r-bar-row"><span class="r-bar-label">Część 1 (1–10)</span><div class="r-bar-bg"><div class="r-bar-fill" id="bar1"></div></div><span class="r-bar-score" id="score1-txt"></span></div>
+      <div class="r-bar-row"><span class="r-bar-label">Część 2 (11–20)</span><div class="r-bar-bg"><div class="r-bar-fill" id="bar2"></div></div><span class="r-bar-score" id="score2-txt"></span></div>
+    </div>
+    <button class="restart-btn" onclick="restart()">Zagraj jeszcze raz 🔄</button>
+  </div>
+</div>
+
+<script>
+const questions = [
+  {ep:"Prescription: Murder",q:"Columbo zauważa, że lekarz podejrzany o morderstwo ma dwa różne kalendarze z innymi datami wizyt. Co by zrobił?",opts:["Ukryłby odkrycie i przez kilka dni obserwowałby, kiedy lekarz zajrzy do kalendarzy","Powiedziałby od razu: «Panie doktorze, mam dwa różne kalendarze — proszę wyjaśnić»","Zgłosiłby sprawę przełożonym i czekał na decyzję","Zniszczyłby jeden z kalendarzy, żeby sprawdzić, czy lekarz tego nie zauważy"],ans:0,exp:"Columbo ukrywałby to odkrycie — obserwując, do którego kalendarza sięgnie lekarz, zdradziłby, który jest prawdziwy."},
+  {ep:"Ransom for a Dead Man",q:"Columbo widzi, że podejrzana zmieniła buty między jednym a drugim przesłuchaniem. Co zrobiłby?",opts:["Wytknąłby to jej natychmiast: «A, jeszcze jedno — te buty... skąd nagle inne?»","Udawałby, że nic nie widzi, i czekał spokojnie","Poprosiłby asystenta o sfotografowanie butów bez jej wiedzy","Zapytałby o pogodę tego dnia, żeby sprawdzić czy zmiana butów ma sens"],ans:0,exp:"Natychmiastowe wytknięcie zmiany butów to klasyczna technika Columbo — prowokacja, by zobaczyć panikę w oczach podejrzanej."},
+  {ep:"Murder by the Book",q:"Columbo znajduje kartkę z notatką, która mogła wypaść mordercy z kieszeni. Co zrobiłby?",opts:["Schowałby kartkę i udawał, że jej nie ma — niech morderca myśli, że ją zgubił","Pokazałby ją od razu podejrzanemu, żeby sprawdzić reakcję","Wysłałby kartkę do laboratorium i czekał na wyniki","Zapytał każdą osobę na miejscu, czy kartka do nich należy"],ans:0,exp:"Ukryta kartka to as w rękawie. Columbo poczekałby, aż podejrzany sam zacznie czegoś szukać — a wtedy go zaskoczy."},
+  {ep:"Dead Weight",q:"Columbo zauważa, że podejrzany zmienia wersję wydarzeń co kilka godzin. Co zrobiłby?",opts:["Zapisywałby każdą wersję i czekał, aż sprzeczności będą nie do obronienia","Zapytałby wprost: «Którą wersję mam traktować poważnie?»","Poprosił o wariograf natychmiast","Udawał, że nie słuchał poprzednich wersji"],ans:1,exp:"Tu Columbo działa przez konfrontację — zebrał wszystkie sprzeczności i zadał pytanie wprost, by podejrzany wpadł w spiralę tłumaczeń."},
+  {ep:"Suitable for Framing",q:"Columbo widzi, że podejrzany dotyka obrazu, na którym nie powinno być jego odcisków palców. Co zrobiłby?",opts:["Udawałby, że tego nie widział — i po cichu zarządził pobranie odcisków z całej galerii","Powiedział od razu: «Hej, właśnie dotknął pan dowodu!»","Wyciągnął rękawiczki i zabrał obraz jako dowód na miejscu","Sfotografował rękę podejrzanego telefonem"],ans:0,exp:"Udawanie nieuwagi to klucz — Columbo chce mieć odciski w laboratorium, zanim podejrzany wymyśli historyjkę o tym, dlaczego je tam zostawił."},
+  {ep:"Double Shock",q:"Columbo zauważa, że podejrzany ma na rękawie ślady sadzy pasujące do miejsca zbrodni. Co zrobiłby?",opts:["Od razu powiedziałby: «A co to za sadza na rękawie? Ciekawe...»","Zachowałby to w tajemnicy i zamówił analizę odzieży","Poprosił o oddanie marynarki do czyszczalni — i zabrał próbkę sadzy","Zapytałby o ostatni kominek, przy którym podejrzany siedział"],ans:0,exp:"Bezpośrednia konfrontacja ze śladem sadzy — Columbo obserwuje, czy podejrzany spojrzy na rękaw, skłamie, czy się zaplącze."},
+  {ep:"Any Old Port in a Storm",q:"Columbo odkrywa, że w piwnicy z winami jedna butelka została podmieniona. Co zrobiłby?",opts:["Ukryłby tę informację i obserwował, czy podejrzany sam wspomni o winie","Powiedziałby: «Właśnie znalazłem coś dziwnego w piwnicy — może pan spojrzy?»","Zabrałby całą kolekcję jako dowody","Zaprosił sommeliera, by publicznie ocenił podmienioną butelkę"],ans:0,exp:"Wiedza o podmienionej butelce jest cenniejsza ukryta — Columbo czeka, aż podejrzany sam się zdradzi, serwując mu to wino."},
+  {ep:"Try and Catch Me",q:"Columbo widzi, że podejrzana nerwowo reaguje na jedno konkretne nazwisko. Co zrobiłby?",opts:["Powtarzałby to nazwisko w różnych kontekstach, żeby ją sprowokować","Udawałby, że nie zauważył żadnej reakcji","Sprawdziłby w aktach, kim jest ta osoba, i dopiero potem wrócił z pytaniem","Zapytał wprost: «Dlaczego drżą pani ręce przy tym nazwisku?»"],ans:0,exp:"Powtarzanie prowokującego nazwiska to mistrzowska technika — każde drgnięcie powieki to informacja dla Columbo."},
+  {ep:"Now You See Him",q:"Columbo znajduje mały element z mechanizmu scenicznego, który mógł zgubić iluzjonista. Co zrobiłby?",opts:["Schowałby dowód głęboko do kieszeni i czekał, aż iluzjonista sam zacznie go szukać","Pokazałby go iluzjoniście, pytając: «Czy to pańskie?»","Zapytał techników scenicznych, do czego służy ten element","Wystawił go na widok w garderobie iluzjonisty"],ans:0,exp:"Iluzjonista z pewnością szuka zaginionego elementu. Columbo czeka — kto pyta, ten się zdradza."},
+  {ep:"Columbo Likes the Nightlife",q:"Columbo zauważa, że podejrzany unika jednego konkretnego pytania. Co zrobiłby?",opts:["Zadałby je jeszcze raz, tym razem bardziej bezpośrednio i spokojnie","Zignorowałby to pytanie do końca rozmowy","Zapytał o coś zupełnie innego i wrócił do tematu nieoczekiwanie","Poprosił kolegę, żeby zadał to pytanie w jego imieniu"],ans:0,exp:"Spokojne, bezpośrednie powtórzenie pytania — Columbo nie odpuszcza, a milczenie podejrzanego mówi więcej niż słowa."},
+  {ep:"Étude in Black",q:"Columbo zauważa, że pianista fałszuje konkretne nuty zawsze wtedy, gdy mowa o jednej dacie. Jak powinien zareagować?",opts:["Udawałby, że jest wielbicielem muzyki i wracał do tej daty w rozmowie, obserwując fałsze","Przerwałby grę i zapytał wprost o tę datę","Zamówiłby nagrania z tego okresu z archiwum","Poprosił innego muzyka o zagranie tej samej sekwencji"],ans:0,exp:"Columbo zamienia się w entuzjastę muzyki — to pozwala mu wielokrotnie wracać do daty bez wzbudzania podejrzeń."},
+  {ep:"The Greenhouse Jungle",q:"Columbo odkrywa, że podejrzany podlewa rośliny w szklarni zawsze o tej samej godzinie, kiedy miało dojść do zbrodni. Co zrobiłby?",opts:["Sam zaczął interesować się roślinami i «przypadkowo» przychodził o tej samej porze, obserwując reakcje","Zapytał od razu: «Gdzie pan był o tej godzinie w dniu morderstwa?»","Sprawdziłby kamery przy szklarni","Poprosił ogrodnika o dziennik podlewania"],ans:0,exp:"Ukryta obserwacja rytmu dnia podejrzanego — Columbo wkomponowuje się w jego rutynę, zanim postawi oskarżenie."},
+  {ep:"A Friend in Deed",q:"Columbo dowiaduje się, że podejrzany wysłał list z alibi, ale koperta ma stempel pocztowy z innego dnia niż nadanie. Co zrobiłby?",opts:["Zachował list w tajemnicy i sprawdził, czy podejrzany sam wspomni o tym liście","Pokazał kopertę podejrzanemu z pytaniem: «Jak to możliwe?»","Wezwał eksperta od filatelistyki","Porównał stempel z innymi listami z tego tygodnia"],ans:0,exp:"List z błędnym stemplem to pułapka — Columbo czeka, aż podejrzany sam go przywoła jako dowód alibi, i wtedy uderza."},
+  {ep:"Mind Over Mayhem",q:"Columbo rozmawia z genialnym naukowcem podejrzanym o morderstwo. Naukowiec wyprzedza każde pytanie, zanim Columbo je zada. Co zrobiłby Columbo?",opts:["Zadałby pytania w odwrotnej kolejności niż oczekuje naukowiec, by go zaskoczyć","Powiedział wprost: «Widzi pan za dużo — to mnie niepokoi»","Udałby, że jest zdezorientowany i poprosił o wyjaśnienie teorii naukowych","Wezwał eksperta do oceny inteligencji podejrzanego"],ans:0,exp:"Columbo jest mistrzem udawania głupszego. Odwrócona kolejność pytań wytrąca nawet genialnego przeciwnika z rytmu."},
+  {ep:"Publish or Perish",q:"Columbo zauważa, że wydawca podejrzany o zlecenie morderstwa zawsze ma przy sobie identyczny egzemplarz tej samej książki. Co zrobiłby?",opts:["Poprosił o «podarowanie» jednego egzemplarza i zlecił zbadanie co jest w środku","Zapytał: «Co takiego wyjątkowego jest w tej książce?»","Przeszukał magazyn wydawnictwa","Sprawdził listę nakładu tej pozycji"],ans:0,exp:"Prośba o egzemplarz pozwala Columbo zbadać książkę bez wzbudzania podejrzeń — być może ukrywa wiadomość lub dowód."},
+  {ep:"Swan Song",q:"Podejrzany gwiazdor muzyki country twierdzi, że w czasie wypadku samolotowego był nieprzytomny. Columbo odkrywa, że pasażer widział go przytomnego. Co zrobiłby?",opts:["Ukrył zeznanie świadka i zapytał gwiazdora o szczegóły lotu, czekając na sprzeczność","Od razu wyjął zeznanie i powiedział: «Ktoś widział pana przytomnym»","Sprawdził czarne skrzynki samolotu","Poprosił o symulację wypadku w laboratorium"],ans:0,exp:"Columbo trzyma świadka w rezerwie — gwiazdor nie wie, że ktoś go widział, i sam wpada w pułapkę opisując «niepamięć»."},
+  {ep:"The Most Crucial Game",q:"Podejrzany menedżer twierdzi, że był na meczu futbolowym w czasie zbrodni. Columbo dowiaduje się, że stadion miał tego dnia awarię nagłośnienia. Co zrobiłby?",opts:["Zapytał menedżera o szczegóły meczu — kto strzelił, ile goli, jaki był dźwięk stadionu","Ogłosił, że ma nagranie z monitoringu stadionu (choć go nie miał)","Sprawdził bilety wstępu na stadion","Poprosił komentatorów sportowych o listę widzów VIP"],ans:0,exp:"Pytanie o dźwięk stadionu przy awarii nagłośnienia to pułapka — ktoś, kto naprawdę tam był, wiedziałby, że panowała cisza."},
+  {ep:"Negative Reaction",q:"Fotograf podejrzany o morderstwo twierdzi, że zdjęcia alibi zrobił o konkretnej godzinie. Columbo zauważa, że cień na fotografii pada pod innym kątem niż powinien o tej porze. Co zrobiłby?",opts:["Wziął zdjęcie do eksperta od astronomii słonecznej i czekał z wiedzą, aż fotograf sam wskaże godzinę","Powiedział od razu: «Ten cień nie zgadza się z godziną»","Zlecił eksperyment z lustrzanką o tej samej porze","Sprawdził dane GPS aparatu fotograficznego"],ans:0,exp:"Kąt cienia to twarda fizyka — Columbo konsultuje to z ekspertem cicho, by zaskoczyć fotografa, gdy ten będzie pewien swojego alibi."},
+  {ep:"A Stitch in Crime (TRUDNE — chemia!)",q:"Kardiochirurg użył nici chirurgicznych, które rozpuszczają się po 10 dniach, zamiast trwałych — wszczepił je pacjentowi, który może umrzeć. Columbo chce wiedzieć: jaka substancja chemiczna sprawia, że nici chirurgiczne są wchłanialne przez organizm?",opts:["Polimer kwasu poliglikolowego (PGA) — rozkłada się przez hydrolizę w tkankach","Nylon — stopniowo utlenia się w kontakcie z krwią","Jedwab naturalny — enzymy trawienne go wchłaniają","Kevlar — reaguje z sokiem żołądkowym"],ans:0,exp:"Nici wchłanialne wykonuje się z polimeru kwasu poliglikolowego (PGA) lub polimlekowego. Hydroliza rozrywa łańcuchy polimeru w ciągu kilku–kilkunastu dni. Columbo musiał to wiedzieć, by udowodnić podmianę nici i uratować pacjenta przed rozejściem się szwów."},
+  {ep:"Blueprint for Murder (TRUDNE — fizyka!)",q:"Architekt-morderca twierdzi, że ofiara wyjechała za granicę. Columbo podejrzewa, że ciało jest zalane w fundamencie budynku. Jakie zjawisko fizyczne pozwoliłoby Columbo to udowodnić BEZ rozkopywania?",opts:["Georadar (GPR) — fale elektromagnetyczne odbijają się inaczej od szczątków organicznych niż od jednorodnego betonu","Rezonans magnetyczny (MRI) — wykrywa wodę w tkankach przez ścianki betonu","Spektroskopia rentgenowska — wykrywa fosfor z kości przez beton","Sejsmografia — drgania fundamentu różnią się przy zagrzebanym ciele"],ans:0,exp:"Georadar (Ground Penetrating Radar) wysyła impulsy elektromagnetyczne, które odbijają się od obiektów o różnej gęstości — szczątki organiczne dają inny wzorzec odbicia niż jednolity beton. To realna metoda stosowana w kryminalistyce i archeologii. Columbo mógłby zlecić skan fundamentu bez jednej łopaty!"}
+];
+
+let current=0,score=0,score1=0,score2=0,answered=false;
+
+function render(){
+  const q=questions[current];
+  document.getElementById('prog-label').textContent='Pytanie '+(current+1)+' z '+questions.length;
+  document.getElementById('prog-fill').style.width=(((current+1)/questions.length)*100)+'%';
+  document.getElementById('ep-badge').textContent=q.ep;
+  document.getElementById('q-text').textContent=q.q;
+  const exp=document.getElementById('explanation');
+  exp.style.display='none';
+  exp.textContent=q.exp;
+  document.getElementById('next-btn').style.display='none';
+  answered=false;
+  const c=document.getElementById('options-container');
+  c.innerHTML='';
+  const labels=['A','B','C','D'];
+  q.opts.forEach(function(o,i){
+    const d=document.createElement('div');
+    d.className='option';
+    d.innerHTML='<span class="badge">'+labels[i]+'</span><span>'+o+'</span>';
+    d.onclick=function(){selectOption(i,d);};
+    c.appendChild(d);
+  });
+}
+
+function selectOption(i,el){
+  if(answered)return;
+  answered=true;
+  const q=questions[current];
+  const opts=document.querySelectorAll('.option');
+  opts.forEach(function(o){o.classList.add('disabled');});
+  if(i===q.ans){
+    el.classList.add('correct');
+    score++;
+    if(current<10)score1++;else score2++;
+  } else {
+    el.classList.add('wrong');
+    opts[q.ans].classList.add('correct');
+  }
+  document.getElementById('explanation').style.display='block';
+  const nb=document.getElementById('next-btn');
+  nb.style.display='block';
+  nb.textContent=current<questions.length-1?'Następne pytanie →':'Zobacz wynik 🏁';
+}
+
+function nextQ(){
+  current++;
+  if(current>=questions.length){showResult();return;}
+  render();
+}
+
+function showResult(){
+  document.getElementById('quiz-screen').style.display='none';
+  const rs=document.getElementById('result-screen');
+  rs.style.display='block';
+  const pct=Math.round((score/questions.length)*100);
+  let icon='🕵️',msg='';
+  if(pct>=90){icon='🏆';msg='Niesamowite! Rozumiesz Columbo lepiej niż jego szef! Twój nos do tropienia podejrzanych jest równie dobry co jego stary prochowiec.';}
+  else if(pct>=70){icon='🌟';msg='Świetnie, Isabela! Masz instynkt detektywa. Columbo byłby z Ciebie dumny — i pewnie zaprosiłby Cię na cygaro (ale nie pal!).';}
+  else if(pct>=50){icon='🔍';msg='Dobry wynik! Zaczynasz rozumieć logikę Columbo. Jeszcze kilka odcinków i będziesz rozgryzać morderców razem z nim!';}
+  else{icon='📺';msg='Columbo mówi: «Jeszcze jedno małe pytanie...» — może warto obejrzeć jeszcze kilka odcinków? Spróbuj jeszcze raz!';}
+  document.getElementById('res-icon').textContent=icon;
+  document.getElementById('res-score').textContent=score+' / '+questions.length;
+  document.getElementById('res-msg').textContent=msg;
+  document.getElementById('bar1').style.width=(score1/10*100)+'%';
+  document.getElementById('bar2').style.width=(score2/10*100)+'%';
+  document.getElementById('score1-txt').textContent=score1+'/10';
+  document.getElementById('score2-txt').textContent=score2+'/10';
+}
+
+function restart(){
+  current=0;score=0;score1=0;score2=0;answered=false;
+  document.getElementById('result-screen').style.display='none';
+  document.getElementById('quiz-screen').style.display='block';
+  render();
+}
+
+render();
+</script>
+</body>
+</html>
