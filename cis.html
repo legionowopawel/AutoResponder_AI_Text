@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sprawdź, czy się kwalifikujesz — Quiz PCIS Legionowo</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#f5f4f0;color:#1a1a1a;min-height:100vh}
+#app{padding:1rem;max-width:480px;margin:0 auto}
+.hero{text-align:center;padding:1.5rem 0 1rem}
+.hero img{width:160px;height:160px;object-fit:cover;border-radius:50%;border:3px solid #7FB37A}
+.fallback-icon{width:160px;height:160px;border-radius:50%;background:#EAF3E3;border:3px solid #7FB37A;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:72px}
+.hero h1{font-size:22px;font-weight:600;color:#1F5C2E;margin:.75rem 0 .5rem}
+.hero p{font-size:14px;color:#5F5E5A;line-height:1.6;margin:0 .5rem}
+.progress-label{font-size:12px;color:#5F5E5A;margin-bottom:.5rem}
+.progress-bar{background:#D3D1C7;border-radius:99px;height:6px;margin:0 0 1rem}
+.progress-fill{background:#3B8A4E;height:6px;border-radius:99px;transition:width .4s}
+.question-card{background:#fff;border:1px solid #D3D1C7;border-radius:14px;padding:1.25rem;margin-bottom:1rem}
+.ep-badge{display:inline-block;font-size:11px;color:#1F5C2E;background:#EAF3E3;padding:3px 10px;border-radius:99px;margin-bottom:.5rem;font-weight:600}
+.ep-row{margin-bottom:.75rem}
+.q-text{font-size:15px;font-weight:600;color:#1a1a1a;line-height:1.5;margin-bottom:1rem}
+.option{display:flex;align-items:flex-start;gap:10px;padding:.75rem 1rem;border:1px solid #D3D1C7;border-radius:10px;margin-bottom:.5rem;cursor:pointer;transition:background .15s,border-color .15s;font-size:14px;color:#1a1a1a;line-height:1.5;background:#fff}
+.option:hover{background:#F1EFE8;border-color:#B4B2A9}
+.option .badge{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:#F1EFE8;border:1px solid #B4B2A9;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#5F5E5A}
+.option.correct{background:#EAF3DE;border-color:#3B6D11}
+.option.correct .badge{background:#3B6D11;color:#EAF3DE;border-color:#3B6D11}
+.option.wrong{background:#FCEBEB;border-color:#A32D2D}
+.option.wrong .badge{background:#A32D2D;color:#FCEBEB;border-color:#A32D2D}
+.option.disabled{cursor:default;pointer-events:none}
+.explanation{margin-top:.75rem;padding:.75rem;background:#F1EFE8;border-radius:8px;font-size:13px;color:#444441;line-height:1.6;display:none;border-left:3px solid #3B8A4E}
+.praise{margin-top:.75rem;padding:.75rem;background:#EAF3DE;border-radius:8px;font-size:13px;color:#2c4a13;line-height:1.6;display:none;border-left:3px solid #3B6D11;font-weight:600}
+.nav-btn{width:100%;padding:.75rem;border-radius:10px;border:1px solid #B4B2A9;background:#fff;font-size:15px;font-weight:600;color:#1a1a1a;cursor:pointer;margin-top:.5rem;display:none}
+.nav-btn:hover{background:#F1EFE8}
+.nav-btn.primary{background:#3B8A4E;color:#fff;border-color:#3B8A4E}
+.nav-btn.primary:hover{background:#2C6B3B}
+.nav-btn.shown{display:block}
+#name-input{width:100%;padding:.85rem 1rem;border-radius:10px;border:1px solid #B4B2A9;font-size:16px;margin-bottom:.85rem;font-family:inherit}
+#name-input:focus{outline:2px solid #3B8A4E;border-color:#3B8A4E}
+#name-screen .question-card{text-align:center}
+.break-card{background:#fff;border:1px solid #D3D1C7;border-radius:14px;padding:1.25rem;text-align:center}
+.break-card h2{font-size:18px;color:#1F5C2E;margin-bottom:.5rem}
+.break-card p{font-size:13px;color:#5F5E5A;margin-bottom:.85rem;line-height:1.5}
+.break-card video{width:100%;border-radius:10px;background:#000;margin-bottom:.85rem}
+#result-screen{display:none;text-align:center;padding:1rem}
+.result-icon{font-size:64px;margin:.5rem 0}
+.result-score{font-size:42px;font-weight:700;color:#3B8A4E;margin:.5rem 0}
+.result-msg{font-size:15px;color:#5F5E5A;line-height:1.6;margin:.75rem 0 1.5rem;background:#EAF3E3;padding:1rem;border-radius:12px;text-align:left}
+.result-bars{text-align:left;margin:1rem 0;background:#fff;border:1px solid #D3D1C7;border-radius:12px;padding:1rem}
+.r-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:13px}
+.r-bar-row:last-child{margin-bottom:0}
+.r-bar-label{width:130px;color:#5F5E5A;flex-shrink:0}
+.r-bar-bg{flex:1;background:#F1EFE8;border-radius:99px;height:10px}
+.r-bar-fill{height:10px;border-radius:99px;background:#3B8A4E;transition:width .6s}
+.r-bar-score{min-width:32px;text-align:right;font-weight:600;color:#3B8A4E}
+.restart-btn{width:100%;padding:.85rem;border-radius:10px;background:#3B8A4E;color:#fff;border:none;font-size:15px;font-weight:600;cursor:pointer;margin-top:1rem}
+.restart-btn:hover{background:#2C6B3B}
+.final-video-box{margin-top:1.25rem;background:#fff;border:1px solid #D3D1C7;border-radius:14px;padding:1.25rem}
+.final-video-box h3{font-size:16px;color:#1F5C2E;margin-bottom:.5rem}
+.final-video-box video{width:100%;border-radius:10px;background:#000;margin-top:.5rem}
+.contact-box{margin-top:1.25rem;background:#fff;border:1px solid #D3D1C7;border-radius:14px;padding:1.25rem;text-align:left}
+.contact-box h3{font-size:16px;color:#1F5C2E;margin-bottom:.65rem;text-align:center}
+.contact-box a{color:#1F5C2E;font-weight:600;text-decoration:none}
+.contact-box a:hover{text-decoration:underline}
+.contact-row{display:flex;align-items:flex-start;gap:10px;padding:.6rem 0;border-bottom:1px solid #F1EFE8;font-size:13px;line-height:1.5}
+.contact-row:last-child{border-bottom:none}
+.contact-row i{color:#3B8A4E;font-size:18px;margin-top:1px}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="name-screen">
+    <div class="hero">
+      <div class="fallback-icon" id="fallback-icon-name">🤝</div>
+      <h1>Sprawdź, czy kwalifikujesz się do PCIS</h1>
+      <p>Krótki, prosty quiz wiedzy — bez stresu, bez egzaminu. Dowiesz się, jak działa ustawa o zatrudnieniu socjalnym i czym jest Powiatowe Centrum Integracji Społecznej. Jak się nazywasz?</p>
+    </div>
+    <div class="question-card">
+      <input id="name-input" type="text" placeholder="Wpisz swoje imię..." maxlength="20" onkeydown="if(event.key==='Enter')startQuiz()">
+      <button class="nav-btn primary shown" onclick="startQuiz()">Zaczynamy 🚀</button>
+    </div>
+  </div>
+
+  <div id="quiz-screen" style="display:none">
+    <div class="hero">
+      <div class="fallback-icon" id="fallback-icon">🤝</div>
+      <h1 id="hero-title">Quiz wiedzy — PCIS Legionowo</h1>
+      <p id="hero-text"></p>
+    </div>
+
+    <div class="progress-label" id="prog-label">Pytanie 1 z 15</div>
+    <div class="progress-bar"><div class="progress-fill" id="prog-fill" style="width:7%"></div></div>
+
+    <div class="question-card" id="q-card">
+      <div class="ep-row">
+        <span class="ep-badge" id="ep-badge"></span>
+      </div>
+      <div class="q-text" id="q-text"></div>
+      <div id="options-container"></div>
+      <div class="praise" id="praise"></div>
+      <div class="explanation" id="explanation"></div>
+    </div>
+    <button class="nav-btn primary" id="next-btn" onclick="nextQ()">Następne pytanie →</button>
+  </div>
+
+  <div id="break-screen" style="display:none">
+    <div class="break-card">
+      <h2 id="break-title">Krótka przerwa...</h2>
+      <p id="break-text"></p>
+      <video id="break-video" controls playsinline></video>
+      <button class="nav-btn primary shown" onclick="continueAfterBreak()">Wracamy do quizu →</button>
+    </div>
+  </div>
+
+  <div id="result-screen">
+    <div class="result-icon" id="res-icon"></div>
+    <div style="font-size:22px;font-weight:600;color:#1F5C2E;margin:.5rem 0">Koniec quizu!</div>
+    <div class="result-score" id="res-score"></div>
+    <div class="result-msg" id="res-msg"></div>
+    <div class="result-bars">
+      <div class="r-bar-row"><span class="r-bar-label">Kto może skorzystać</span><div class="r-bar-bg"><div class="r-bar-fill" id="bar1"></div></div><span class="r-bar-score" id="score1-txt"></span></div>
+      <div class="r-bar-row"><span class="r-bar-label">Świadczenia i prawa</span><div class="r-bar-bg"><div class="r-bar-fill" id="bar2"></div></div><span class="r-bar-score" id="score2-txt"></span></div>
+      <div class="r-bar-row"><span class="r-bar-label">Życie w PCIS</span><div class="r-bar-bg"><div class="r-bar-fill" id="bar3"></div></div><span class="r-bar-score" id="score3-txt"></span></div>
+    </div>
+    <div class="final-video-box">
+      <h3 id="final-video-title">Krótkie nagranie na koniec</h3>
+      <p id="final-video-text">Zanim pójdziesz — zobacz, jak wygląda u nas dzień powszedni.</p>
+      <video id="final-video" src="4.mp4" controls playsinline></video>
+    </div>
+    <div class="contact-box">
+      <h3>Co dalej? Odwiedź nas online 👇</h3>
+      <div class="contact-row"><i class="ti ti-brand-facebook"></i><span>Warsztaty w Skrzeszewie na żywo: <a href="https://www.facebook.com/cisrabarbar" target="_blank">facebook.com/cisrabarbar</a></span></div>
+      <div class="contact-row"><i class="ti ti-brand-facebook"></i><span>Strona główna PCIS w Legionowie: <a href="https://www.facebook.com/PCISwL" target="_blank">facebook.com/PCISwL</a></span></div>
+      <div class="contact-row"><i class="ti ti-map-pin"></i><span>Warsztaty odbywają się m.in. w <strong>Skrzeszewie</strong> — możesz tam zobaczyć, jak naprawdę wygląda dzień uczestnika.</span></div>
+    </div>
+    <button class="restart-btn" onclick="restart()">Zrób quiz jeszcze raz 🔄</button>
+  </div>
+
+</div>
+
+<script>
+const questions = [
+  {ep:"Część 1: Kto może skorzystać",q:"{name}, ustawa o zatrudnieniu socjalnym mówi, że z programu może skorzystać m.in. osoba długotrwale bezrobotna. Co to oznacza w prostych słowach?",opts:["Osobę, która od dłuższego czasu nie ma pracy i jest zarejestrowana jako bezrobotna","Osobę, która właśnie zaczęła szukać pracy w tym tygodniu","Osobę, która pracuje na pełen etat","Osobę, która jest na urlopie wypoczynkowym"],ans:0,exp:"Zgodnie z ustawą o zatrudnieniu socjalnym, jedną z grup, do których kierowana jest pomoc, są osoby długotrwale bezrobotne w rozumieniu przepisów o rynku pracy. To właśnie taka sytuacja — brak pracy przez dłuższy czas — otwiera drogę do skorzystania z programu."},
+  {ep:"Część 1: Kto może skorzystać",q:"Czy osoba uzależniona od alkoholu może w ogóle ubiegać się o udział w PCIS?",opts:["Nie, uzależnienie zawsze wyklucza udział","Tak — ustawa wprost wymienia osoby uzależnione od alkoholu jako jedną z grup, do których jest skierowana","Tak, ale tylko jeśli ukończyła terapię 10 lat temu","Tylko jeśli ma pisemną zgodę lekarza rodzinnego"],ans:1,exp:"To dobra wiadomość: ustawa o zatrudnieniu socjalnym wprost wymienia osoby uzależnione od alkoholu jako jedną z grup objętych jej działaniem. Sam fakt uzależnienia nie przekreśla udziału w programie."},
+  {ep:"Część 1: Kto może skorzystać",q:"Czy osoba z zaburzeniami psychicznymi może uczestniczyć w zajęciach centrum integracji społecznej?",opts:["Nie, takie osoby są automatycznie wykluczone","Tak, ustawa obejmuje również osoby z zaburzeniami psychicznymi","Tylko jeśli zaburzenia minęły co najmniej rok temu","Tylko za zgodą sądu"],ans:1,exp:"Ustawa wprost obejmuje osoby z zaburzeniami psychicznymi w rozumieniu przepisów o ochronie zdrowia psychicznego. Sama diagnoza nie przekreśla możliwości udziału w programie."},
+  {ep:"Część 1: Kto może skorzystać",q:"Pan Mariusz wyszedł niedawno z zakładu karnego i ma trudności w powrocie do normalnego życia. Czy taka sytuacja jest uwzględniona w ustawie?",opts:["Nie, ustawa dotyczy tylko osób, które nigdy nie miały konfliktu z prawem","Tak — ustawa wymienia osoby zwalniane z zakładów karnych, mające trudności w integracji ze środowiskiem","Tak, ale tylko przez pierwszy tydzień po wyjściu","Nie, to wyłącznie sprawa kuratora sądowego"],ans:1,exp:"Ustawa o zatrudnieniu socjalnym wymienia wprost osoby zwalniane z zakładów karnych, mające trudności w integracji ze środowiskiem, jako jedną z grup, dla których powstał ten program."},
+  {ep:"Część 1: Kto może skorzystać",q:"Co jest ogólnym warunkiem, który musi spełniać każdy kandydat — niezależnie od tego, w której z wymienionych grup się znajduje?",opts:["Musi mieć skończone studia wyższe","Z powodu swojej sytuacji życiowej nie jest w stanie własnym staraniem zaspokoić podstawowych potrzeb życiowych i ma ograniczone uczestnictwo w życiu zawodowym, społecznym lub rodzinnym","Musi mieszkać sam, bez rodziny","Musi mieć więcej niż 60 lat"],ans:1,exp:"To jest właśnie wspólny mianownik dla wszystkich grup wymienionych w ustawie: chodzi o sytuację życiową, w której ktoś sam nie jest w stanie zaspokoić podstawowych potrzeb i ma utrudnione uczestnictwo w życiu zawodowym, społecznym czy rodzinnym."},
+  {ep:"Część 2: Świadczenia i prawa",q:"Czy osoba, która ma już prawo do emerytury, może jednocześnie skorzystać z programu zatrudnienia socjalnego?",opts:["Tak, emerytura i program można łączyć bez ograniczeń","Nie — ustawa wprost mówi, że nie stosuje się jej do osób, które mają prawo do emerytury","Tak, ale tylko jeśli emerytura jest niższa niż 1000 zł","Zależy to wyłącznie od decyzji burmistrza"],ans:1,exp:"Ustawa wyraźnie wyłącza ze swojego zakresu osoby, które mają już prawo do emerytury, podobnie jak do zasiłku dla bezrobotnych, renty z tytułu niezdolności do pracy czy świadczenia przedemerytalnego. Te świadczenia traktowane są jako już zapewniające wsparcie."},
+  {ep:"Część 2: Świadczenia i prawa",q:"Jakie świadczenie przysługuje uczestnikowi w trakcie zajęć w centrum integracji społecznej?",opts:["Żadne, udział jest całkowicie bezpłatny dla uczestnika","Świadczenie integracyjne, przyznawane na wniosek uczestnika przez kierownika centrum","Jednorazowa premia powitalna, wypłacana tylko raz","Zwrot kosztów dojazdu, ale bez żadnego świadczenia pieniężnego"],ans:1,exp:"W okresie próbnym oraz w okresie uczestnictwa w zajęciach kierownik centrum integracji społecznej przyznaje, na wniosek uczestnika, świadczenie integracyjne. To realne wsparcie finansowe na czas udziału w programie."},
+  {ep:"Część 2: Świadczenia i prawa",q:"Z czym jest powiązana wysokość świadczenia integracyjnego?",opts:["Z minimalnym wynagrodzeniem krajowym","Ze 120% zasiłku dla bezrobotnych","Z wysokością czynszu w danym mieście","Świadczenie integracyjne ma zawsze taką samą, ustaloną z góry kwotę dla wszystkich gmin w Polsce"],ans:1,exp:"Ustawa wskazuje świadczenie integracyjne w wysokości 120% zasiłku dla bezrobotnych. To realna, konkretna kwota, która ma zapewnić uczestnikowi stabilność finansową na czas reintegracji."},
+  {ep:"Część 2: Świadczenia i prawa",q:"Czy w trakcie uczestnictwa w programie przysługują jakieś dni wolne?",opts:["Nie, udział jest codzienny bez wyjątków","Tak, uczestnikowi przysługuje 6 dni wolnych od zajęć","Tak, ale tylko jeden dzień w całym roku","Dni wolne przysługują wyłącznie kobietom"],ans:1,exp:"Ustawa przewiduje, że uczestnikowi przysługuje 6 dni wolnych od zajęć. To pokazuje, że program jest zorganizowany jak prawdziwe, uregulowane zajęcia, a nie tylko nieformalna aktywność."},
+  {ep:"Część 2: Świadczenia i prawa",q:"Czy w czasie uczestnictwa w programie odprowadzane są składki na ubezpieczenia społeczne?",opts:["Nie, uczestnik musi sam opłacać składki","Tak — starosta refunduje świadczenia integracyjne wraz ze składkami na ubezpieczenia społeczne","Tylko jeśli uczestnik ma więcej niż 50 lat","Składki są opłacane tylko za ostatni miesiąc programu"],ans:1,exp:"Ustawa stanowi, że starosta refunduje świadczenia integracyjne wraz ze składkami na ubezpieczenia społeczne. To znaczy, że czas spędzony w programie nie jest „dziurą” w historii ubezpieczeniowej uczestnika."},
+  {ep:"Część 3: Życie w PCIS",q:"Czy w trakcie programu uczestnik ma kontakt z psychologiem lub coachem?",opts:["Nie, program polega wyłącznie na pracy fizycznej","Tak — reintegracja społeczna obejmuje też wsparcie psychologa lub coacha oraz zajęcia grupowe, które pomagają wrócić do aktywności i odbudować pewność siebie","Kontakt z psychologiem jest możliwy tylko poza programem, na własną rękę","Tylko osoby poniżej 25 lat mają taką możliwość"],ans:1,exp:"Reintegracja społeczna to ważna część programu — oprócz nauki konkretnego zawodu, uczestnicy mogą liczyć na rozmowy z psychologiem lub coachem oraz zajęcia grupowe, które pomagają odbudować relacje, pewność siebie i chęć do działania. To jedna z rzeczy, które najbardziej cenią sobie uczestnicy."},
+  {ep:"Część 3: Życie w PCIS",q:"Co się dzieje ze świadczeniem integracyjnym, jeśli uczestnik ma nieusprawiedliwioną nieobecność na zajęciach?",opts:["Nic, świadczenie zawsze jest wypłacane w pełnej wysokości","Świadczenie integracyjne ulega zmniejszeniu, a po dłuższej nieobecności może nie przysługiwać za dany miesiąc","Uczestnik jest natychmiast i bezpowrotnie usuwany z programu po jednej nieobecności","Świadczenie wzrasta, aby zmotywować uczestnika do powrotu"],ans:1,exp:"Ustawa przewiduje, że przy nieusprawiedliwionej nieobecności świadczenie integracyjne ulega zmniejszeniu, a po przekroczeniu pewnego okresu nieobecności nie przysługuje za dany miesiąc. To pokazuje, jak ważna jest regularna obecność — podobnie jak w każdej pracy."},
+  {ep:"Część 3: Życie w PCIS",q:"Po zakończeniu udziału w programie, czy uczestnik otrzymuje jakiś dokument potwierdzający nabyte umiejętności?",opts:["Nie, program nie wydaje żadnych dokumentów","Tak, uczestnik otrzymuje zaświadczenie potwierdzające uczestnictwo i nabyte umiejętności","Tylko osoby z najwyższą oceną otrzymują dokument","Dokument wydawany jest wyłącznie na specjalną prośbę po roku od zakończenia"],ans:1,exp:"Po zakończeniu udziału w zajęciach uczestnik otrzymuje zaświadczenie potwierdzające uczestnictwo oraz nabyte umiejętności. To realny dokument, który można pokazać przy szukaniu pracy."},
+  {ep:"Część 3: Życie w PCIS",q:"Gdzie odbywają się warsztaty PCIS, które można zobaczyć „na żywo” m.in. na profilu Facebook „cisrabarbar”?",opts:["Wyłącznie online, bez kontaktu z innymi uczestnikami","W Skrzeszewie — tam organizowane są warsztaty, a relacje z nich można zobaczyć na Facebooku","Tylko w Warszawie, codziennie trzeba dojeżdżać 2 godziny","Warsztaty odbywają się raz w roku, podczas jednego wyjazdu integracyjnego"],ans:1,exp:"Warsztaty PCIS odbywają się m.in. w Skrzeszewie. Relacje, zdjęcia i atmosferę z zajęć można zobaczyć na profilu Facebook „cisrabarbar” — to dobry sposób, żeby zobaczyć, jak naprawdę wygląda dzień uczestnika, jeszcze przed pierwszą wizytą."},
+  {ep:"Część 3: Życie w PCIS",q:"Gdzie warto zajrzeć, żeby śledzić bieżące informacje, ogłoszenia i nowości całego Powiatowego Centrum Integracji Społecznej w Legionowie?",opts:["Na profil Facebook „PCISwL” — to główna strona PCIS w Legionowie z aktualnościami","Tylko na tablicy ogłoszeń w urzędzie gminy","Informacje są przekazywane wyłącznie telefonicznie","Nie istnieje żadne źródło informacji online"],ans:0,exp:"Główna strona Powiatowego Centrum Integracji Społecznej w Legionowie na Facebooku to „PCISwL” (facebook.com/PCISwL). To dobre miejsce, by na bieżąco śledzić, co się dzieje, zobaczyć zdjęcia z zajęć i poznać atmosferę jeszcze przed osobistą wizytą."}
+];
+
+const breakVideos={5:"1.mp4",10:"2.mp4"};
+const breakTexts={
+  5:{title:"Połowa za Tobą — mała przerwa ☕",text:"Część o tym, kto może skorzystać z programu, masz już za sobą. Teraz przejdziemy do świadczeń i konkretnych korzyści. Obejrzyj krótkie nagranie i wracamy."},
+  10:{title:"Już tylko ostatnia część!",text:"Zostało Ci tylko 5 pytań o codzienne życie w PCIS — o warsztatach, wsparciu psychologa i o tym, gdzie nas znaleźć. Zaraz się świetnie bawisz!"}
+};
+const praises=[
+  "Brawo, {name}! Dokładnie tak to działa.",
+  "Świetnie, {name}! Coraz lepiej rozumiesz, jak funkcjonuje PCIS.",
+  "Trafna odpowiedź! Widać, że łapiesz, o co tu chodzi.",
+  "Dobrze, {name}! Krok po kroku poznajesz swoje prawa.",
+  "Super! Tak właśnie jest napisane w ustawie."
+];
+
+let userName="Kandydacie";
+let current=0,score=0,scores=[0,0,0],answered=false,pendingNext=null;
+
+function startQuiz(){
+  const v=document.getElementById('name-input').value.trim();
+  userName=v?v:"Kandydacie";
+  document.getElementById('name-screen').style.display='none';
+  document.getElementById('quiz-screen').style.display='block';
+  document.getElementById('hero-text').textContent="Witaj, "+userName+"! To bardzo prosty quiz — nie musisz się niczego uczyć na pamięć. Każda odpowiedź to krok do tego, żeby lepiej zrozumieć, czy i jak możesz skorzystać z PCIS. Powodzenia!";
+  render();
+}
+
+function fillName(str){return str.replace(/\{name\}/g,userName);}
+
+function render(){
+  const q=questions[current];
+  document.getElementById('prog-label').textContent='Pytanie '+(current+1)+' z '+questions.length;
+  document.getElementById('prog-fill').style.width=(((current+1)/questions.length)*100)+'%';
+  document.getElementById('ep-badge').textContent=q.ep;
+  document.getElementById('q-text').textContent=fillName(q.q);
+
+  const praise=document.getElementById('praise');
+  praise.style.display='none';
+  const exp=document.getElementById('explanation');
+  exp.style.display='none';
+  exp.textContent=q.exp;
+  document.getElementById('next-btn').classList.remove('shown');
+  answered=false;
+  const c=document.getElementById('options-container');
+  c.innerHTML='';
+  const labels=['A','B','C','D'];
+  q.opts.forEach(function(o,i){
+    const d=document.createElement('div');
+    d.className='option';
+    d.innerHTML='<span class="badge">'+labels[i]+'</span><span>'+o+'</span>';
+    d.onclick=function(){selectOption(i,d);};
+    c.appendChild(d);
+  });
+}
+
+function segmentIndex(i){return Math.floor(i/5);}
+
+function selectOption(i,el){
+  if(answered)return;
+  answered=true;
+  const q=questions[current];
+  const opts=document.querySelectorAll('.option');
+  opts.forEach(function(o){o.classList.add('disabled');});
+  const isCorrect=(i===q.ans);
+  if(isCorrect){
+    el.classList.add('correct');
+    score++;
+    scores[segmentIndex(current)]++;
+  } else {
+    el.classList.add('wrong');
+    opts[q.ans].classList.add('correct');
+  }
+
+  if(isCorrect){
+    const p=document.getElementById('praise');
+    p.textContent=fillName(praises[Math.floor(Math.random()*praises.length)]);
+    p.style.display='block';
+    document.getElementById('explanation').style.display='block';
+  } else {
+    document.getElementById('explanation').style.display='block';
+  }
+
+  const nb=document.getElementById('next-btn');
+  nb.classList.add('shown');
+  nb.textContent=current<questions.length-1?'Następne pytanie →':'Zobacz wynik 🏁';
+}
+
+function nextQ(){
+  const completed=current+1;
+  const next=completed;
+  if(next>=questions.length){showResult();return;}
+  if(breakVideos[completed]){
+    pendingNext=next;
+    showBreak(completed);
+    return;
+  }
+  current=next;
+  render();
+}
+
+function showBreak(completedCount){
+  document.getElementById('quiz-screen').style.display='none';
+  const bs=document.getElementById('break-screen');
+  bs.style.display='block';
+  document.getElementById('break-title').textContent=breakTexts[completedCount].title;
+  document.getElementById('break-text').textContent=breakTexts[completedCount].text;
+  const vid=document.getElementById('break-video');
+  vid.src=breakVideos[completedCount];
+  vid.load();
+}
+
+function continueAfterBreak(){
+  document.getElementById('break-screen').style.display='none';
+  document.getElementById('quiz-screen').style.display='block';
+  current=pendingNext;
+  render();
+}
+
+function showResult(){
+  document.getElementById('quiz-screen').style.display='none';
+  const rs=document.getElementById('result-screen');
+  rs.style.display='block';
+  const pct=Math.round((score/questions.length)*100);
+  let icon='🤝',msg='';
+  if(pct>=85){icon='🏆';msg=userName+', super wynik! Świetnie rozumiesz, jak działa ustawa o zatrudnieniu socjalnym i czym jest PCIS. Wygląda na to, że jesteś już dobrze przygotowany/a do rozmowy z naszym pracownikiem. Zapraszamy do kontaktu!';}
+  else if(pct>=60){icon='🌟';msg='Dobrze, '+userName+'! Znasz już najważniejsze zasady — to świetny punkt wyjścia przed wizytą w PCIS. Jeśli coś było niejasne, nasz pracownik chętnie to wyjaśni osobiście.';}
+  else if(pct>=35){icon='📋';msg='To dobry początek, '+userName+'! Quiz pokazał Ci kilka ważnych rzeczy o programie. Nie musisz znać wszystkiego na pamięć — od tego jest rozmowa z pracownikiem PCIS, który wszystko spokojnie wyjaśni.';}
+  else{icon='💬';msg='Dzięki, że przeszedłeś/aś quiz, '+userName+'! Widać, że temat jest dla Ciebie nowy — i to jest zupełnie normalne. Najlepiej będzie po prostu przyjść i pogadać z nami osobiście, krok po kroku wszystko wytłumaczymy.';}
+  document.getElementById('res-icon').textContent=icon;
+  document.getElementById('res-score').textContent=score+' / '+questions.length;
+  document.getElementById('res-msg').textContent=msg;
+  for(let s=0;s<3;s++){
+    document.getElementById('bar'+(s+1)).style.width=(scores[s]/5*100)+'%';
+    document.getElementById('score'+(s+1)+'-txt').textContent=scores[s]+'/5';
+  }
+  document.getElementById('final-video-title').textContent="Krótkie nagranie dla Ciebie, "+userName;
+}
+
+function restart(){
+  current=0;score=0;scores=[0,0,0];answered=false;pendingNext=null;
+  document.getElementById('result-screen').style.display='none';
+  document.getElementById('name-screen').style.display='block';
+  document.getElementById('name-input').value='';
+}
+</script>
+</body>
+</html>
