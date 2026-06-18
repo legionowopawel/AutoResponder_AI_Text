@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Porucznik Columbo pyta... — Nowe zagadki</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#f5f4f0;color:#1a1a1a;min-height:100vh}
+#app{padding:1rem;max-width:480px;margin:0 auto}
+.hero{text-align:center;padding:1.5rem 0 1rem}
+.hero img{width:160px;height:160px;object-fit:cover;border-radius:50%;border:3px solid #AFA9EC}
+.fallback-icon{width:160px;height:160px;border-radius:50%;background:#EEEDFE;border:3px solid #AFA9EC;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:72px}
+.hero h1{font-size:22px;font-weight:600;color:#26215C;margin:.75rem 0 .5rem}
+.hero p{font-size:14px;color:#5F5E5A;line-height:1.6;margin:0 .5rem}
+.progress-label{font-size:12px;color:#5F5E5A;margin-bottom:.5rem}
+.progress-bar{background:#D3D1C7;border-radius:99px;height:6px;margin:0 0 1rem}
+.progress-fill{background:#534AB7;height:6px;border-radius:99px;transition:width .4s}
+.question-card{background:#fff;border:1px solid #D3D1C7;border-radius:14px;padding:1.25rem;margin-bottom:1rem}
+.ep-badge{display:inline-block;font-size:11px;color:#534AB7;background:#EEEDFE;padding:3px 10px;border-radius:99px;margin-bottom:.5rem;font-weight:600}
+.hard-badge{display:inline-block;font-size:11px;color:#A32D2D;background:#FCEBEB;padding:3px 10px;border-radius:99px;margin-bottom:.5rem;margin-left:6px;font-weight:600}
+.ep-row{margin-bottom:.75rem}
+.q-text{font-size:15px;font-weight:600;color:#1a1a1a;line-height:1.5;margin-bottom:1rem}
+.option{display:flex;align-items:flex-start;gap:10px;padding:.75rem 1rem;border:1px solid #D3D1C7;border-radius:10px;margin-bottom:.5rem;cursor:pointer;transition:background .15s,border-color .15s;font-size:14px;color:#1a1a1a;line-height:1.5;background:#fff}
+.option:hover{background:#F1EFE8;border-color:#B4B2A9}
+.option .badge{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:#F1EFE8;border:1px solid #B4B2A9;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#5F5E5A}
+.option.correct{background:#EAF3DE;border-color:#3B6D11}
+.option.correct .badge{background:#3B6D11;color:#EAF3DE;border-color:#3B6D11}
+.option.wrong{background:#FCEBEB;border-color:#A32D2D}
+.option.wrong .badge{background:#A32D2D;color:#FCEBEB;border-color:#A32D2D}
+.option.disabled{cursor:default;pointer-events:none}
+.explanation{margin-top:.75rem;padding:.75rem;background:#F1EFE8;border-radius:8px;font-size:13px;color:#444441;line-height:1.6;display:none;border-left:3px solid #534AB7}
+.praise{margin-top:.75rem;padding:.75rem;background:#EAF3DE;border-radius:8px;font-size:13px;color:#2c4a13;line-height:1.6;display:none;border-left:3px solid #3B6D11;font-weight:600}
+.hint-btn{display:none;font-size:12px;color:#534AB7;background:#EEEDFE;border:1px solid #AFA9EC;padding:6px 12px;border-radius:99px;cursor:pointer;margin-bottom:.75rem;font-weight:600}
+.hint-btn:hover{background:#dedcfb}
+.hint-box{display:none;margin-bottom:.75rem;padding:.75rem;background:#FFF8E1;border-radius:8px;font-size:13px;color:#5a4a14;line-height:1.6;border-left:3px solid #C9A227}
+.nav-btn{width:100%;padding:.75rem;border-radius:10px;border:1px solid #B4B2A9;background:#fff;font-size:15px;font-weight:600;color:#1a1a1a;cursor:pointer;margin-top:.5rem;display:none}
+.nav-btn:hover{background:#F1EFE8}
+.nav-btn.primary{background:#534AB7;color:#fff;border-color:#534AB7}
+.nav-btn.primary:hover{background:#3C3489}
+.nav-btn.shown{display:block}
+#name-input{width:100%;padding:.85rem 1rem;border-radius:10px;border:1px solid #B4B2A9;font-size:16px;margin-bottom:.85rem;font-family:inherit}
+#name-input:focus{outline:2px solid #534AB7;border-color:#534AB7}
+#name-screen .question-card{text-align:center}
+.break-card{background:#fff;border:1px solid #D3D1C7;border-radius:14px;padding:1.25rem;text-align:center}
+.break-card h2{font-size:18px;color:#26215C;margin-bottom:.5rem}
+.break-card p{font-size:13px;color:#5F5E5A;margin-bottom:.85rem;line-height:1.5}
+.break-card video{width:100%;border-radius:10px;background:#000;margin-bottom:.85rem}
+#result-screen{display:none;text-align:center;padding:1rem}
+.result-icon{font-size:64px;margin:.5rem 0}
+.result-score{font-size:42px;font-weight:700;color:#534AB7;margin:.5rem 0}
+.result-msg{font-size:15px;color:#5F5E5A;line-height:1.6;margin:.75rem 0 1.5rem;background:#EEEDFE;padding:1rem;border-radius:12px}
+.result-bars{text-align:left;margin:1rem 0;background:#fff;border:1px solid #D3D1C7;border-radius:12px;padding:1rem}
+.r-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:13px}
+.r-bar-row:last-child{margin-bottom:0}
+.r-bar-label{width:120px;color:#5F5E5A;flex-shrink:0}
+.r-bar-bg{flex:1;background:#F1EFE8;border-radius:99px;height:10px}
+.r-bar-fill{height:10px;border-radius:99px;background:#534AB7;transition:width .6s}
+.r-bar-score{min-width:32px;text-align:right;font-weight:600;color:#534AB7}
+.restart-btn{width:100%;padding:.85rem;border-radius:10px;background:#534AB7;color:#fff;border:none;font-size:15px;font-weight:600;cursor:pointer;margin-top:1rem}
+.restart-btn:hover{background:#3C3489}
+.final-video-box{margin-top:1.25rem;background:#fff;border:1px solid #D3D1C7;border-radius:14px;padding:1.25rem}
+.final-video-box h3{font-size:16px;color:#26215C;margin-bottom:.5rem}
+.final-video-box video{width:100%;border-radius:10px;background:#000;margin-top:.5rem}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="name-screen">
+    <div class="hero">
+      <img src="columbo.png" alt="Columbo" id="hero-img-name" onerror="document.getElementById('hero-img-name').style.display='none';document.getElementById('fallback-icon-name').style.display='flex'">
+      <div class="fallback-icon" id="fallback-icon-name" style="display:none">🕵️</div>
+      <h1>Porucznik Columbo potrzebuje pomocy</h1>
+      <p>Zanim zaczniemy przesłuchanie, poruczniku — jak się nazywasz? Tym razem czekają na Ciebie zupełnie nowe sprawy, jeszcze trudniejsze niż ostatnio.</p>
+    </div>
+    <div class="question-card">
+      <input id="name-input" type="text" placeholder="Wpisz swoje imię..." maxlength="20" onkeydown="if(event.key==='Enter')startQuiz()">
+      <button class="nav-btn primary shown" onclick="startQuiz()">Zaczynamy przesłuchanie 🕵️</button>
+    </div>
+  </div>
+
+  <div id="quiz-screen" style="display:none">
+    <div class="hero">
+      <img src="columbo.png" alt="Columbo" id="hero-img" onerror="document.getElementById('hero-img').style.display='none';document.getElementById('fallback-icon').style.display='flex'">
+      <div class="fallback-icon" id="fallback-icon" style="display:none">🕵️</div>
+      <h1 id="hero-title">Co zrobiłby Columbo?</h1>
+      <p id="hero-text"></p>
+    </div>
+
+    <div class="progress-label" id="prog-label">Pytanie 1 z 20</div>
+    <div class="progress-bar"><div class="progress-fill" id="prog-fill" style="width:5%"></div></div>
+
+    <div class="question-card" id="q-card">
+      <div class="ep-row">
+        <span class="ep-badge" id="ep-badge"></span><span class="hard-badge" id="hard-badge" style="display:none">🧠 TRUDNE PYTANIE</span>
+      </div>
+      <div class="q-text" id="q-text"></div>
+      <button class="hint-btn" id="hint-btn" onclick="toggleHint()">💡 Pokaż podpowiedź</button>
+      <div class="hint-box" id="hint-box"></div>
+      <div id="options-container"></div>
+      <div class="praise" id="praise"></div>
+      <div class="explanation" id="explanation"></div>
+    </div>
+    <button class="nav-btn primary" id="next-btn" onclick="nextQ()">Następne pytanie →</button>
+  </div>
+
+  <div id="break-screen" style="display:none">
+    <div class="break-card">
+      <h2 id="break-title">Krótka przerwa na zebranie myśli...</h2>
+      <p id="break-text">Porucznik Columbo musi to przemyśleć przy filiżance kawy.</p>
+      <video id="break-video" controls playsinline></video>
+      <button class="nav-btn primary shown" onclick="continueAfterBreak()">Wracamy do przesłuchania →</button>
+    </div>
+  </div>
+
+  <div id="result-screen">
+    <div class="result-icon" id="res-icon"></div>
+    <div style="font-size:22px;font-weight:600;color:#26215C;margin:.5rem 0">Koniec przesłuchania!</div>
+    <div class="result-score" id="res-score"></div>
+    <div class="result-msg" id="res-msg"></div>
+    <div class="result-bars">
+      <div class="r-bar-row"><span class="r-bar-label">Część 1 (1–5)</span><div class="r-bar-bg"><div class="r-bar-fill" id="bar1"></div></div><span class="r-bar-score" id="score1-txt"></span></div>
+      <div class="r-bar-row"><span class="r-bar-label">Część 2 (6–10)</span><div class="r-bar-bg"><div class="r-bar-fill" id="bar2"></div></div><span class="r-bar-score" id="score2-txt"></span></div>
+      <div class="r-bar-row"><span class="r-bar-label">Część 3 (11–15)</span><div class="r-bar-bg"><div class="r-bar-fill" id="bar3"></div></div><span class="r-bar-score" id="score3-txt"></span></div>
+      <div class="r-bar-row"><span class="r-bar-label">Część 4 (16–20)</span><div class="r-bar-bg"><div class="r-bar-fill" id="bar4"></div></div><span class="r-bar-score" id="score4-txt"></span></div>
+    </div>
+    <div class="final-video-box">
+      <h3 id="final-video-title">Ostatnia wiadomość od Porucznika</h3>
+      <p id="final-video-text">Jeszcze jedno, zanim pójdziesz...</p>
+      <video id="final-video" src="4.mp4" controls playsinline></video>
+    </div>
+    <button class="restart-btn" onclick="restart()">Zagraj jeszcze raz 🔄</button>
+  </div>
+
+</div>
+
+<script>
+const questions = [
+  {ep:"Dagger of the Mind",q:"Columbo: «{name}, powiedz mi, co powinienem zrobić — dwoje podejrzanych opowiada mi identyczną historię o swoim alibi, słowo w słowo, jakby uczyli się jej na pamięć jak kwestii ze sztuki teatralnej?»",opts:["Rozdzieliłbym ich i poprosił, by każde z nich opowiedziało tę samą historię własnymi słowami","Uwierzyłbym im od razu — zgodna historia to dobry znak, że mówią prawdę","Zapytałbym reżysera teatru, czy ktoś ich do tego przygotował","Nagrałbym obie rozmowy i porównał wyłącznie ton głosu"],ans:0,exp:"Prawdziwe wspomnienia dwóch różnych osób zawsze się trochę różnią w szczegółach. Idealnie zgodna, wyuczona historia jest podejrzana — Columbo każe każdemu opowiedzieć ją po swojemu, żeby zobaczyć, gdzie pęka wyuczony scenariusz."},
+  {ep:"Lady in Waiting",q:"Columbo: «{name}, powiedz mi, co powinienem zrobić — podejrzana twierdzi, że broniła się przed bratem, który wpadł do jej pokoju, ale zauważyłem, że drzwi mają zasuwę, którą można zamknąć tylko z jej strony?»",opts:["Sam, po cichu, sprawdziłbym, czy rzeczywiście da się zatrzasnąć tę zasuwę w ułamku sekundy, zanim coś powiem","Od razu zapytałbym: «Jak zdążyła pani zamknąć zasuwę, jeśli broniła się pani przed napastnikiem?»","Wezwałbym stolarza, żeby zdemontował całe drzwi jako dowód","Poprosiłbym sąsiadów o opinię, czy te drzwi zawsze tak głośno trzaskają"],ans:0,exp:"Columbo najpierw sam, dyskretnie, testuje fizyczną możliwość — czy zasuwę da się zamknąć tak szybko, jak twierdzi podejrzana. Dopiero z twardym dowodem w ręku konfrontuje się z nią, żeby nie dać jej czasu na wymyślenie nowej wersji."},
+  {ep:"The Most Dangerous Match",q:"Columbo: «{name}, powiedz mi, co powinienem zrobić — podejrzany mistrz szachowy opisuje mi dokładny ruch swojego rywala, który widać tylko na nagraniu z kamery ochrony, do którego nikt jeszcze nie miał dostępu?»",opts:["Po cichu sprawdziłbym listę osób, które miały dostęp do tego nagrania, zanim powiem podejrzanemu, że to wiem","Natychmiast zapytałbym: «Skąd pan to wie, jeśli nikt jeszcze nie widział nagrania?»","Zniszczyłbym nagranie, żeby zobaczyć reakcję podejrzanego","Zapytałbym sędziego turnieju o regulamin dotyczący kamer"],ans:0,exp:"Zanim Columbo skonfrontuje się z podejrzanym, chce mieć twardy dowód, kto naprawdę miał dostęp do nagrania — inaczej podejrzany może wymyślić niewinne wyjaśnienie. Cicha weryfikacja to fundament każdej dobrej pułapki."},
+  {ep:"Candidate for Crime",q:"Columbo: «{name}, powiedz mi, co powinienem zrobić — kandydat na senatora ma alibi ze zdjęcia z wiecu wyborczego, ale zauważyłem, że na tym zdjęciu jego krawat jest zawiązany inaczej niż na zdjęciach z całego pozostałego dnia?»",opts:["Po cichu porównałbym wszystkie zdjęcia z całego dnia, zanim cokolwiek powiem podejrzanemu","Natychmiast pokazałbym mu zdjęcie i zapytał o krawat","Poprosiłbym fotografa o zniszczenie negatywu","Zapytałbym stylistę kandydata, jak zwykle wiąże krawaty"],ans:0,exp:"Mały, niepasujący szczegół na zdjęciu może oznaczać, że to zdjęcie wcale nie zostało zrobione w czasie, kiedy twierdzi podejrzany. Columbo zbiera wszystkie dowody fotograficzne po cichu, zanim postawi pytanie, na które podejrzany nie zdąży się przygotować."},
+  {ep:"The Bye-Bye Sky-High I.Q. Murder Case",q:"Columbo: «{name}, powiedz mi, co powinienem zrobić — bardzo inteligentny podejrzany przedstawia mi swoje alibi jako idealnie logiczną, bez najmniejszej sprzeczności historię — taką, w jakiej nigdy nie ma żadnej z tych drobnych nieścisłości, które mają prawdziwe wspomnienia?»",opts:["Uznałbym to za podejrzane i szukał, gdzie fakty zostały dopasowane do siebie po fakcie, a nie przeżyte na żywo","Uwierzyłbym mu — w końcu to genialny człowiek, więc jego pamięć też musi być genialna","Poprosiłbym o test na inteligencję, żeby ocenić, czy mógłby zaplanować zbrodnię","Zignorowałbym logikę i skupiłbym się tylko na motywie"],ans:0,exp:"Prawdziwe wspomnienia są pełne małych niedokładności — ktoś, kto pamięta wszystko idealnie i bez najmniejszego potknięcia, raczej powtarza wyuczoną, skonstruowaną historię niż relacjonuje to, co naprawdę przeżył."},
+  {ep:"Forgotten Lady",q:"Columbo: «{name}, powiedz mi, co powinienem zrobić — podejrzana, gwiazda kina niemego, ma słabe serce i bierze lek na receptę, a ja zauważyłem, że liczba tabletek w jej domu nie zgadza się z liczbą dni, które minęły od wykupienia recepty?»",opts:["Po cichu policzyłbym tabletki jeszcze raz i sprawdził datę recepty w aptece, zanim cokolwiek powiem","Od razu zapytałbym ją: «Czy bierze pani więcej tabletek niż powinna?»","Zabrałbym całe opakowanie leków jako dowód na miejscu","Poprosiłbym lekarza o zmianę dawkowania, żeby sprawdzić jej reakcję"],ans:1,exp:"Czasem Columbo decyduje się na bezpośrednie, spokojne pytanie, żeby zobaczyć reakcję podejrzanej na żywo — niespodziewane pytanie o liczbę tabletek nie daje czasu na przygotowanie fałszywego wyjaśnienia."},
+  {ep:"A Case of Immunity",q:"Columbo: «{name}, powiedz mi, co powinienem zrobić — dyplomata z immunitetem twierdzi, że modlił się sam w swoim pokoju w czasie zbrodni, ale na nagraniu z mikrofonu słyszę charakterystyczny dźwięk klimatyzacji, która w ambasadzie działa tylko w określonych godzinach?»",opts:["Po cichu sprawdziłbym u technika harmonogram działania klimatyzacji, zanim cokolwiek powiem","Natychmiast zapytałbym dyplomatę o ten dźwięk z nagrania","Poprosiłbym o zniesienie immunitetu, żeby przeszukać pokój","Zapytałbym pozostałych pracowników ambasady, czy modlitwa wymaga ciszy"],ans:0,exp:"Dźwięk w tle nagrania jest twardym, technicznym dowodem — ale tylko jeśli Columbo najpierw potwierdzi godziny pracy klimatyzacji u kogoś niezależnego. Inaczej dyplomata, chroniony immunitetem, łatwo zaprzeczy."},
+  {ep:"Identity Crisis",q:"Columbo: «{name}, powiedz mi, co powinienem zrobić — podejrzany, który twierdzi, że jest zwykłym urzędnikiem, używa w rozmowie ze mną specjalistycznego żargonu wywiadowczego, którego zwykły urzędnik nie powinien znać?»",opts:["Zapytałbym go wprost, spokojnie: «Skąd zna pan takie słownictwo, jeśli pracuje pan w zwykłym biurze?»","Udałbym, że nie zauważyłem niczego dziwnego w jego słownictwie","Sprawdziłbym jego dyplom uniwersytecki w archiwum","Poprosiłbym kolegę z pracy podejrzanego o opinię na temat jego słownictwa"],ans:0,exp:"Bezpośrednie, niewinnie zadane pytanie zaskakuje podejrzanego — musi w jednej chwili wymyślić wiarygodne wyjaśnienie, dlaczego «zwykły urzędnik» mówi językiem agenta wywiadu. To właśnie ten moment zdrady Columbo uwielbia."},
+  {ep:"Last Salute to the Commodore",q:"Columbo: «{name}, powiedz mi, co powinienem zrobić — podejrzany z rodziny budującej jachty twierdzi, że całą noc płynął wzdłuż wybrzeża, ale poziom paliwa w zbiorniku jego jachtu nie zgadza się z taką długą trasą?»",opts:["Po cichu sprawdziłbym dziennik rejsu i liczniki paliwa, zanim go o to zapytam","Od razu zapytałbym: «Jak to możliwe, że ma pan tyle paliwa po takim długim rejsie?»","Poprosiłbym o przeszukanie całego jachtu w obecności podejrzanego","Zapytałbym sąsiadów z mariny, czy widzieli, kiedy jacht wypłynął"],ans:0,exp:"Liczby — paliwo, czas, odległość — nie da się oszukać, jeśli się je sprawdzi niezależnie. Columbo zbiera te dane po cichu, żeby mieć w ręku niepodważalny dowód matematyczny, zanim postawi pytanie."},
+  {ep:"Fade in to Murder",q:"Columbo: «{name}, powiedz mi, co powinienem zrobić — podejrzany jest aktorem, który gra w telewizji detektywa wzorowanego na mnie, i próbuje przewidzieć każdy mój ruch, podpatrując sztuczki ze swojego własnego serialu?»",opts:["Zadałbym mu zwyczajne, nudne, biurokratyczne pytanie, którego żaden fikcyjny telewizyjny detektyw nigdy by nie zadał","Powtórzyłbym dokładnie te sztuczki, które on sam gra w swoim serialu, żeby go zmylić","Poprosiłbym scenarzystów jego serialu o listę wszystkich jego sztuczek","Zrezygnowałbym ze śledztwa, bo on i tak przewidzi każdy mój krok"],ans:0,exp:"Aktor przygotował się tylko na «telewizyjne» zagrania, bo tylko takie znał ze swojego serialu. Columbo zaskakuje go czymś prozaicznym i nieefektownym — pytaniem o paragon albo godzinę zamknięcia sklepu — na co żaden scenarzysta by się nie przygotował."},
+  {ep:"Old Fashioned Murder",q:"Columbo: «{name}, powiedz mi, co powinienem zrobić — w muzealnej gablotce rodzinnego muzeum jest eksponat z metką, na której data nie mogła jeszcze istnieć w dniu, gdy podejrzany twierdzi, że go tam umieścił?»",opts:["Po cichu zweryfikowałbym historię tej metki u archiwisty muzeum, zanim cokolwiek powiem","Natychmiast pokazałbym metkę podejrzanemu i zapytał o datę","Wymieniłbym metkę na nową, żeby sprawdzić, czy ktoś to zauważy","Zapytałbym zwiedzających, czy ktoś zwrócił uwagę na tę datę"],ans:0,exp:"Data na metce to twardy, sprawdzalny fakt — ale dopiero potwierdzona u niezależnego archiwisty staje się dowodem, a nie tylko podejrzeniem Columbo."},
+  {ep:"The Conspirators",q:"Columbo: «{name}, powiedz mi, co powinienem zrobić — podejrzany, irlandzki poeta, nerwowo wystukuje palcami na stole powtarzający się rytm, kiedy myśli, że nikt nie patrzy?»",opts:["Po cichu nagrałbym ten rytm i poprosił eksperta o sprawdzenie, czy to nie jest kod, na przykład alfabet Morse'a","Zapytałbym go od razu, czy ten rytm to jakaś piosenka","Poprosiłbym, żeby przestał stukać, bo to mnie rozprasza","Zignorowałbym to — to pewnie tylko nerwowy tik"],ans:0,exp:"Powtarzający się, nierytmiczny wzór stukania może być kodem — na przykład alfabetem Morse'a używanym do przekazywania tajnych informacji. Ekspert potwierdzi to naukowo, zanim Columbo zaryzykuje konfrontację."},
+  {ep:"Columbo Goes to College",q:"Columbo: «{name}, powiedz mi, co powinienem zrobić — dwoje genialnych studentów twierdzi, że całą noc razem pisali ten sam esej, ale styl pisania w obu pracach jest zupełnie inny — jakby napisała je jedna osoba w pośpiechu, już po fakcie?»",opts:["Poprosiłbym eksperta językowego o porównanie stylu pisania obu prac (stylometrię), zanim cokolwiek powiem","Kazałbym im obu napisać nowy esej na miejscu, żeby porównać charakter pisma","Uwierzyłbym im — różny styl to normalne, każdy pisze inaczej","Zapytałbym profesora, czyj styl bardziej mu się podoba"],ans:0,exp:"Stylometria to prawdziwa metoda kryminalistyczna — analizuje długość słów, ulubione zwroty i strukturę zdań, żeby ustalić, kto naprawdę napisał dany tekst. Jeśli «dwie» prace mają jeden styl, to znak, że napisała je jedna osoba."},
+  {ep:"Agenda for Murder",q:"Columbo: «{name}, powiedz mi, co powinienem zrobić — podejrzany prawnik cytuje mi słowo w słowo fragment przemówienia, które rzekomo usłyszał na konferencji, ale to przemówienie miało swoją premierę w telewizji dopiero PO godzinie zbrodni?»",opts:["Od razu zapytałbym: «Skąd pan znał treść tego przemówienia, zanim zostało wygłoszone?»","Po cichu sprawdziłbym, kto napisał to przemówienie, i dopiero potem wrócił z pytaniem","Uwierzyłbym, że ktoś mu je wcześniej streścił przez telefon","Zapytałbym organizatorów konferencji o dokładny program"],ans:0,exp:"To prosta logiczna pułapka czasowa: jeśli przemówienie nie zostało jeszcze wygłoszone, podejrzany nie mógł go usłyszeć «na konferencji» — chyba że sam je napisał albo był gdzie indziej, niż twierdzi. Tu Columbo pytanie zadaje od razu, bo sprzeczność jest tak jasna, że nie da się jej wyjaśnić."},
+  {ep:"Caution: Murder Can Be Hazardous to Your Health",q:"Columbo: «{name}, powiedz mi, co powinienem zrobić — w restauracji butelka rumu, której używa się do efektownego podpalania dań (flambirowania), ma inny poziom alkoholu niż wszystkie pozostałe butelki w barze?»",opts:["Po cichu zleciłbym analizę chemiczną zawartości tej butelki, zanim cokolwiek powiem","Natychmiast wylałbym zawartość butelki, żeby sprawdzić zapach","Zapytałbym barmana, czy ktoś dolewał coś do tej butelki","Kupiłbym taką samą butelkę rumu, żeby porównać kolor"],ans:0,exp:"Tylko laboratoryjna analiza chemiczna może z pewnością wykazać, czy do butelki dodano coś innego niż alkohol — Columbo zbiera ten dowód po cichu, zanim postawi komukolwiek pytanie."},
+  {ep:"Murder Under Glass",q:"Columbo: «{name}, powiedz mi, co powinienem zrobić — krytyk kulinarny umiera po zjedzeniu dania z rzadkim grzybem, a objawy, które opisują świadkowie, nie pasują do zwykłego zatrucia pokarmowego, tylko do konkretnej, znanej trucizny roślinnej?»",opts:["Poprosiłbym toksykologa o potwierdzenie konkretnej trucizny na podstawie objawów, zanim skonfrontuję się z szefem kuchni","Od razu zapytałbym szefa kuchni, jakie grzyby ma w kuchni","Zamknąłbym restaurację, zanim cokolwiek ustalę","Spróbowałbym tego samego dania, żeby ocenić smak"],ans:0,exp:"Różne trucizny dają różne, rozpoznawalne objawy — to wiedza z toksykologii, czyli nauki o trucizn. Dopiero precyzyjna diagnoza pozwala Columbo wiedzieć, czego szukać w kuchni i u kogo, zamiast pytać na ślepo."},
+  {ep:"Make Me a Perfect Murder",q:"Columbo: «{name}, powiedz mi, co powinienem zrobić — podejrzana, szefowa programowania w telewizji, przedstawia mi dane o oglądalności programu jako dowód swojej niewinności, ale po dodaniu wszystkich procent widzów w grupach wiekowych wychodzi mi więcej niż 100%?»",opts:["Po cichu przeliczyłbym te dane jeszcze raz i poprosił o oryginalne, niepodrasowane raporty, zanim cokolwiek powiem","Uwierzyłbym jej, bo statystyka telewizyjna jest skomplikowana i pewnie się pomyliłem","Zapytałbym widzów telewizji, czy oglądali ten program","Poprosiłbym konkurencyjną stację o własne dane"],ans:0,exp:"Procenty wszystkich grup razem nigdy nie mogą przekroczyć 100% — to podstawowa zasada matematyczna. Jeśli dane «dowodu» łamią tę zasadę, to znak, że zostały sfałszowane, a nie że Columbo się pomylił w liczeniu."},
+  {ep:"Death Hits the Jackpot",q:"Columbo: «{name}, powiedz mi, co powinienem zrobić — na losie loteryjnym, który rzekomo kupił sam zwycięzca, są odciski palców tylko jednej osoby — tej, która twierdzi, że nigdy go nie dotykała?»",opts:["Po cichu zleciłbym laboratoryjną analizę odcisków palców, zanim skonfrontuję się z tą osobą","Od razu zapytałbym: «Czemu pani odciski są na losie, którego pani nie dotykała?»","Poprosiłbym sprzedawcę loterii o opisanie klienta z pamięci","Kupiłbym identyczny los, żeby porównać papier"],ans:0,exp:"Odciski palców to twardy, naukowy dowód fizyczny — ale dopiero potwierdzony przez laboratorium, a nie tylko zauważony przez Columbo na pierwszy rzut oka, daje mu pewność do dalszej konfrontacji."},
+  {ep:"Double Exposure",hard:true,hint:"Podpowiedź: Film w kinie składa się z wielu nieruchomych zdjęć (klatek) wyświetlanych bardzo szybko, jedna po drugiej — Twój mózg widzi to jako płynny ruch. Zastanów się, ile takich klatek mija w ciągu jednej sekundy filmu i czy mózg może zarejestrować coś, czego nie zauważasz świadomie.",q:"Columbo: «{name}, powiedz mi — jak to możliwe, że jedna, niewidoczna dla oka klatka filmu może mimo to wywołać u widza realny niepokój i sprawić, że ktoś nagle wyjdzie z sali kinowej?»",opts:["Standardowy film wyświetla 24 klatki na sekundę — jedna dodatkowa klatka trwa tylko 1/24 sekundy, czyli zbyt krótko, by ją świadomie rozpoznać, ale mózg i tak rejestruje ją podświadomie, wywołując emocjonalną reakcję","To niemożliwe naukowo — w filmie musiał ukryć głośnik ultradźwiękowy, a nie obraz","Klatka działa tylko, jeśli widz wcześniej już widział ten konkretny obraz w prawdziwym życiu","To zwykła sugestia psychologiczna — sam obraz nie ma żadnego znaczenia, liczy się tylko to, co powiedziano przed seansem"],ans:0,exp:"To zjawisko nazywa się percepcją podprzelotową (ang. subliminal perception). Film kinowy to seria nieruchomych zdjęć wyświetlanych z prędkością 24 klatek na sekundę — oko i mózg odbierają to jako płynny ruch, bo pojedyncza klatka trwa krócej niż czas potrzebny do jej świadomego rozpoznania (próg świadomej percepcji to zwykle ok. 1/18–1/20 sekundy). Mimo to część mózgu odpowiedzialna za emocje może zareagować na taki obraz, nawet jeśli nie zdążyliśmy go «nazwać» na głos. Podejrzany w tym odcinku wkleja niepokojący obraz w film, żeby u jednej, konkretnej osoby wywołać podświadomy niepokój i zmusić ją do wyjścia z sali w precyzyjnie zaplanowanym momencie — co daje mu alibi na czas zbrodni. To naprawdę badane w psychologii zjawisko, choć reklama działająca w ten sposób jest w wielu krajach prawnie zakazana właśnie dlatego, że omija naszą świadomą kontrolę."},
+  {ep:"How to Dial a Murder",hard:true,hint:"Podpowiedź: Pomyśl o znanym eksperymencie z psami, w którym pies zaczynał się ślinić na sam dźwięk dzwonka, kojarząc go z jedzeniem — nawet bez jedzenia w pobliżu. Ktoś musiał wcześniej wielokrotnie połączyć ten dźwięk z czymś, co pies dobrze rozumie.",q:"Columbo: «{name}, powiedz mi — jak można wytrenować psa, żeby reagował atakiem dokładnie na jedno konkretne słowo wypowiedziane przez telefon, a nie na żaden inny dźwięk czy głos?»",opts:["Przez warunkowanie klasyczne — wielokrotnie powtarzając to słowo dokładnie w momencie, gdy pies był prowokowany do agresji, aż zaczął łączyć samo słowo z sygnałem do ataku, niezależnie od tego, kto je wypowie","Psy rozpoznają konkretne osoby po zapachu przesyłanym przez linię telefoniczną","To było po prostu szczęście — psy zaatakowały przypadkowo, a podejrzany to wykorzystał","Psy reagują na ultradźwięki emitowane przez telefon, niesłyszalne dla ludzi"],ans:0,exp:"To mechanizm warunkowania klasycznego, opisany po raz pierwszy przez rosyjskiego fizjologa Iwana Pawłowa, który zauważył, że psy zaczynają się ślinić na sam dźwięk dzwonka, jeśli wcześniej wielokrotnie towarzyszył on podawaniu jedzenia — mózg psa łączy neutralny sygnał z czymś dla niego ważnym. Podejrzany, psycholog specjalizujący się w zachowaniu zwierząt, trenuje swoje psy tak, że jedno konkretne słowo, wypowiedziane w odpowiednim tonie, staje się dla nich sygnałem do ataku — zupełnie niezależnie od tego, kto je wypowie, nawet automat telefoniczny. Dzięki temu może nagrać to słowo, ustawić nagranie do odtworzenia w zaplanowanym momencie i mieć niepodważalne alibi, bo w chwili zbrodni jest daleko od miejsca zdarzenia. Columbo musi to rozpracować, żeby udowodnić, że prawdziwą bronią był telefon, a nie człowiek na miejscu."}
+];
+
+const breakVideos={5:"1.mp4",10:"2.mp4",15:"3.mp4"};
+const breakTexts={
+  5:{title:"Krótka przerwa na fajkę i kawę...",text:"Porucznik Columbo zawsze robi sobie przerwę, żeby uporządkować myśli. Obejrzyj nagranie, a potem wróćmy do przesłuchania."},
+  10:{title:"Jeszcze jedno, zanim wrócimy...",text:"Połowa drogi za nami! Columbo właśnie znalazł nowy trop."},
+  15:{title:"Ostatnia przerwa przed finałem",text:"Zostały już tylko najtrudniejsze sprawy. Columbo bierze głęboki wdech."}
+};
+const praises=[
+  "Brawo, {name}! Dokładnie tak postąpiłby Porucznik Columbo.",
+  "Świetnie, {name}! To jest myślenie jak prawdziwy detektyw.",
+  "Trafna odpowiedź! Columbo na pewno uśmiechnąłby się pod tym swoim starym prochowcem.",
+  "Dobry refleks, {name}! Podejrzany nie miałby żadnych szans.",
+  "Brawo! Tak właśnie łapie się przestępców — krok po kroku, bez pośpiechu."
+];
+
+let userName="Detektywie";
+let current=0,score=0,scores=[0,0,0,0],answered=false,pendingNext=null;
+
+function startQuiz(){
+  const v=document.getElementById('name-input').value.trim();
+  userName=v?v:"Detektywie";
+  document.getElementById('name-screen').style.display='none';
+  document.getElementById('quiz-screen').style.display='block';
+  document.getElementById('hero-text').textContent="Witaj, "+userName+"! Tym razem czekają na Ciebie zupełnie nowe sprawy Porucznika Columbo. Niektóre będą łatwe, a dwie ostatnie — bardzo trudne. Powodzenia, detektywie!";
+  render();
+}
+
+function fillName(str){return str.replace(/\{name\}/g,userName);}
+
+function render(){
+  const q=questions[current];
+  document.getElementById('prog-label').textContent='Pytanie '+(current+1)+' z '+questions.length;
+  document.getElementById('prog-fill').style.width=(((current+1)/questions.length)*100)+'%';
+  document.getElementById('ep-badge').textContent="Na podstawie odcinka: "+q.ep;
+  document.getElementById('hard-badge').style.display=q.hard?'inline-block':'none';
+  document.getElementById('q-text').textContent=fillName(q.q);
+
+  const hintBtn=document.getElementById('hint-btn');
+  const hintBox=document.getElementById('hint-box');
+  hintBox.style.display='none';
+  hintBox.textContent=q.hint||'';
+  hintBtn.style.display=q.hint?'inline-block':'none';
+  hintBtn.textContent='💡 Pokaż podpowiedź';
+
+  const praise=document.getElementById('praise');
+  praise.style.display='none';
+  const exp=document.getElementById('explanation');
+  exp.style.display='none';
+  exp.textContent=q.exp;
+  document.getElementById('next-btn').classList.remove('shown');
+  answered=false;
+  const c=document.getElementById('options-container');
+  c.innerHTML='';
+  const labels=['A','B','C','D'];
+  q.opts.forEach(function(o,i){
+    const d=document.createElement('div');
+    d.className='option';
+    d.innerHTML='<span class="badge">'+labels[i]+'</span><span>'+o+'</span>';
+    d.onclick=function(){selectOption(i,d);};
+    c.appendChild(d);
+  });
+}
+
+function toggleHint(){
+  const box=document.getElementById('hint-box');
+  const btn=document.getElementById('hint-btn');
+  if(box.style.display==='none'){box.style.display='block';btn.textContent='💡 Ukryj podpowiedź';}
+  else{box.style.display='none';btn.textContent='💡 Pokaż podpowiedź';}
+}
+
+function segmentIndex(i){return Math.floor(i/5);}
+
+function selectOption(i,el){
+  if(answered)return;
+  answered=true;
+  const q=questions[current];
+  const opts=document.querySelectorAll('.option');
+  opts.forEach(function(o){o.classList.add('disabled');});
+  const isCorrect=(i===q.ans);
+  if(isCorrect){
+    el.classList.add('correct');
+    score++;
+    scores[segmentIndex(current)]++;
+  } else {
+    el.classList.add('wrong');
+    opts[q.ans].classList.add('correct');
+  }
+
+  if(q.hard){
+    document.getElementById('explanation').style.display='block';
+  } else if(isCorrect){
+    const p=document.getElementById('praise');
+    p.textContent=fillName(praises[Math.floor(Math.random()*praises.length)]);
+    p.style.display='block';
+  } else {
+    document.getElementById('explanation').style.display='block';
+  }
+
+  const nb=document.getElementById('next-btn');
+  nb.classList.add('shown');
+  nb.textContent=current<questions.length-1?'Następne pytanie →':'Zobacz wynik 🏁';
+}
+
+function nextQ(){
+  const completed=current+1;
+  const next=completed;
+  if(next>=questions.length){showResult();return;}
+  if(breakVideos[completed]){
+    pendingNext=next;
+    showBreak(completed);
+    return;
+  }
+  current=next;
+  render();
+}
+
+function showBreak(completedCount){
+  document.getElementById('quiz-screen').style.display='none';
+  const bs=document.getElementById('break-screen');
+  bs.style.display='block';
+  document.getElementById('break-title').textContent=breakTexts[completedCount].title;
+  document.getElementById('break-text').textContent=breakTexts[completedCount].text;
+  const vid=document.getElementById('break-video');
+  vid.src=breakVideos[completedCount];
+  vid.load();
+}
+
+function continueAfterBreak(){
+  document.getElementById('break-screen').style.display='none';
+  document.getElementById('quiz-screen').style.display='block';
+  current=pendingNext;
+  render();
+}
+
+function showResult(){
+  document.getElementById('quiz-screen').style.display='none';
+  const rs=document.getElementById('result-screen');
+  rs.style.display='block';
+  const pct=Math.round((score/questions.length)*100);
+  let icon='🕵️',msg='';
+  if(pct>=90){icon='🏆';msg=userName+', niesamowite! Rozumiesz Columbo lepiej niż jego szef — nawet te dwa najtrudniejsze pytania nie miały u Ciebie szans.';}
+  else if(pct>=70){icon='🌟';msg='Świetnie, '+userName+'! Masz instynkt detektywa. Columbo byłby z Ciebie dumny — i pewnie zaprosiłby Cię na cygaro (ale nie pal!).';}
+  else if(pct>=50){icon='🔍';msg='Dobry wynik, '+userName+'! Zaczynasz rozumieć logikę Columbo. Te dwa ostatnie pytania były naprawdę trudne — jeszcze kilka odcinków i będziesz rozgryzać morderców razem z nim!';}
+  else{icon='📺';msg='Columbo mówi: «Jeszcze jedno małe pytanie...» — może warto obejrzeć jeszcze kilka odcinków, '+userName+'? Spróbuj jeszcze raz!';}
+  document.getElementById('res-icon').textContent=icon;
+  document.getElementById('res-score').textContent=score+' / '+questions.length;
+  document.getElementById('res-msg').textContent=msg;
+  for(let s=0;s<4;s++){
+    document.getElementById('bar'+(s+1)).style.width=(scores[s]/5*100)+'%';
+    document.getElementById('score'+(s+1)+'-txt').textContent=scores[s]+'/5';
+  }
+  document.getElementById('final-video-title').textContent="Ostatnia wiadomość dla Ciebie, "+userName;
+}
+
+function restart(){
+  current=0;score=0;scores=[0,0,0,0];answered=false;pendingNext=null;
+  document.getElementById('result-screen').style.display='none';
+  document.getElementById('name-screen').style.display='block';
+  document.getElementById('name-input').value='';
+}
+</script>
+</body>
+</html>
