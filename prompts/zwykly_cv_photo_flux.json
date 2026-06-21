@@ -17,7 +17,7 @@
     "N": "stained formal business attire,"
   },
 
-  "negative_prompt": "clean face, smiling, neat hair, groomed, perfect skin, peaceful, organized room, cartoon, anime, painting, illustration, watermark, text",
+  "negative_prompt": "clean face, smiling, neat hair, groomed, perfect skin, peaceful, organized room, cartoon, anime, painting, illustration, watermark, text, nudity, nude, naked, topless, bare skin, tattoos, tattooed body, Marla, second person in background, additional human figure",
 
   "size": "512x512",
 
