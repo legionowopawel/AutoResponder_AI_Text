@@ -24,6 +24,10 @@ openpyxl>=3.1.0
 # Monitorowanie systemu (logging_reporter.py)
 psutil>=5.9.0
 
+# FLUX przez routing providerów HF (core/flux_client.py) — hf-inference
+# przestał hostować FLUX.1-schnell, generowanie idzie przez Together AI itp.
+huggingface_hub>=0.28.0
+
 # Ankiety PDF
 fpdf2>=2.7.4
 

@@ -16,9 +16,10 @@ from datetime import datetime, timedelta
 from flask import current_app
 
 from core.ai_client import call_deepseek, MODEL_TYLER
-from core.config import HF_API_URL, HF_STEPS, HF_GUIDANCE, HF_TIMEOUT, MAX_DLUGOSC_EMAIL
+from core.config import HF_STEPS, HF_GUIDANCE, HF_TIMEOUT, MAX_DLUGOSC_EMAIL
 from core.logging_reporter import get_logger
 from core.hf_token_manager import get_active_tokens, mark_dead
+from core.flux_client import generate_flux_bytes, HfHubHTTPError
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROMPTS_DIR = os.path.join(BASE_DIR, "prompts")
@@ -1783,63 +1784,54 @@ def _generate_flux(
 
     log.info("[psych-flux] %s — prompt %.120s...", label, prompt)
 
-    payload = {
-        "inputs": prompt,
-        "parameters": {
-            "num_inference_steps": steps,
-            "guidance_scale": guidance,
-            "width": width,
-            "height": height,
-            "seed": random.randint(0, 2**32 - 1),
-        },
-    }
-
     for name, token in tokens:
-        headers = {"Authorization": f"Bearer {token}", "Accept": "image/png"}
         try:
-            resp = requests.post(
-                HF_API_URL, headers=headers, json=payload, timeout=HF_TIMEOUT
+            png_bytes = generate_flux_bytes(
+                prompt, token, seed=random.randint(0, 2**32 - 1),
+                steps=steps, guidance=guidance, width=width, height=height,
+                timeout=HF_TIMEOUT,
             )
-            if resp.status_code == 200:
-                log.info(
-                    "[psych-flux] %s OK token=%s (%dB)", label, name, len(resp.content)
-                )
-                try:
-                    from PIL import Image as PILImage
+            log.info(
+                "[psych-flux] %s OK token=%s (%dB)", label, name, len(png_bytes)
+            )
+            try:
+                from PIL import Image as PILImage
 
-                    pil = PILImage.open(io.BytesIO(resp.content)).convert("RGB")
-                    buf = io.BytesIO()
-                    pil.save(buf, format="JPEG", quality=92, optimize=True)
-                    return base64.b64encode(buf.getvalue()).decode("ascii")
-                except Exception as e:
-                    log.warning("[psych-flux] PNG→JPG błąd: %s", e)
-                    return base64.b64encode(resp.content).decode("ascii")
-            elif resp.status_code == 402:
+                pil = PILImage.open(io.BytesIO(png_bytes)).convert("RGB")
+                buf = io.BytesIO()
+                pil.save(buf, format="JPEG", quality=92, optimize=True)
+                return base64.b64encode(buf.getvalue()).decode("ascii")
+            except Exception as e:
+                log.warning("[psych-flux] PNG→JPG błąd: %s", e)
+                return base64.b64encode(png_bytes).decode("ascii")
+        except HfHubHTTPError as e:
+            status = e.response.status_code if e.response is not None else None
+            if status == 402:
                 mark_dead(name)
                 log.warning(
                     "[psych-flux] %s 402 token=%s — wyczerpane kredyty, dodano do czarnej listy",
                     label,
                     name,
                 )
-                if _hf_credit_exhausted(resp):
+                if e.response is not None and _hf_credit_exhausted(e.response):
                     log.warning(
                         "[psych-flux] %s 402 wskazuje na globalne wyczerpanie kredytów — kończę próby",
                         label,
                     )
                     break
-            elif resp.status_code in (401, 403):
+            elif status in (401, 403):
                 mark_dead(name)
                 log.warning(
-                    "[psych-flux] %s HTTP %d token=%s — nieważny, dodano do czarnej listy",
+                    "[psych-flux] %s HTTP %s token=%s — nieważny, dodano do czarnej listy",
                     label,
-                    resp.status_code,
+                    status,
                     name,
                 )
-            elif resp.status_code == 429:
+            elif status == 429:
                 log.warning("[psych-flux] %s 429 token=%s → następny", label, name)
             else:
                 log.warning(
-                    "[psych-flux] %s HTTP %d token=%s", label, resp.status_code, name
+                    "[psych-flux] %s HTTP %s token=%s", label, status, name
                 )
         except Exception as e:
             log.warning("[psych-flux] %s wyjątek token=%s: %s", label, name, e)

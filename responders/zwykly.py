@@ -143,7 +143,6 @@ def _register_fonts() -> tuple:
 # ─────────────────────────────────────────────────────────────────────────────
 from core.config import (
     MAX_DLUGOSC_EMAIL,
-    HF_API_URL,
     HF_STEPS,
     HF_GUIDANCE,
     HF_TIMEOUT,
@@ -153,6 +152,7 @@ from core.config import (
 )
 
 from core.hf_token_manager import get_active_tokens, mark_dead, hf_tokens
+from core.flux_client import generate_flux_bytes, HfHubHTTPError
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPER: pakowanie pliku do ZIP (Gmail blokuje .html, .htm, .svg)
@@ -2068,14 +2068,6 @@ def _generate_flux_image(
         return None
 
     seed = random.randint(0, 2**32 - 1)
-    payload = {
-        "inputs": prompt,
-        "parameters": {
-            "num_inference_steps": HF_STEPS,
-            "guidance_scale": HF_GUIDANCE,
-            "seed": seed,
-        },
-    }
 
     logger.info(
         "[flux-tyler] Panel %d — %d tokenów dostępnych, seed=%d",
@@ -2085,32 +2077,33 @@ def _generate_flux_image(
     )
 
     for name, token in tokens:
-        headers = {"Authorization": f"Bearer {token}", "Accept": "image/png"}
         try:
             logger.info("[flux-tyler] Próbuję token: %s", name)
-            resp = requests.post(
-                HF_API_URL, headers=headers, json=payload, timeout=HF_TIMEOUT
+            png_bytes = generate_flux_bytes(
+                prompt,
+                token,
+                seed=seed,
+                steps=HF_STEPS,
+                guidance=HF_GUIDANCE,
+                timeout=HF_TIMEOUT,
             )
+            logger.info(
+                "[flux-tyler] ✓ Token %s: sukces (PNG %d B)",
+                name,
+                len(png_bytes),
+            )
+            return {
+                "base64": base64.b64encode(png_bytes).decode("ascii"),
+                "content_type": "image/png",
+                "filename": f"tyler_panel{panel_index}_seed{seed}.png",
+                "seed": seed,
+                "token_name": name,
+                "remaining_requests": None,  # provider routowany nie zwraca tego nagłówka
+            }
 
-            remaining = resp.headers.get("X-Remaining-Requests")
-
-            if resp.status_code == 200:
-                logger.info(
-                    "[flux-tyler] ✓ Token %s: sukces (PNG %d B, pozostało: %s)",
-                    name,
-                    len(resp.content),
-                    remaining or "?",
-                )
-                return {
-                    "base64": base64.b64encode(resp.content).decode("ascii"),
-                    "content_type": "image/png",
-                    "filename": f"tyler_panel{panel_index}_seed{seed}.png",
-                    "seed": seed,
-                    "token_name": name,
-                    "remaining_requests": int(remaining) if remaining else None,
-                }
-
-            elif resp.status_code == 402:
+        except HfHubHTTPError as e:
+            status = e.response.status_code if e.response is not None else None
+            if status == 402:
                 # Wyczerpane kredyty — dodaj do czarnej listy na całą sesję
                 mark_dead(name)
                 logger.warning(
@@ -2118,35 +2111,29 @@ def _generate_flux_image(
                     "dodano do czarnej listy sesji",
                     name,
                 )
-            elif resp.status_code in (401, 403):
+            elif status in (401, 403):
                 # Nieważny token — też na czarną listę
                 mark_dead(name)
                 logger.warning(
-                    "[flux-tyler] ✗ Token %s: nieważny (HTTP %d) — "
+                    "[flux-tyler] ✗ Token %s: nieważny (HTTP %s) — "
                     "dodano do czarnej listy sesji",
                     name,
-                    resp.status_code,
+                    status,
                 )
-            elif resp.status_code in (503, 529):
+            elif status in (503, 529):
                 logger.warning(
-                    "[flux-tyler] ⚠ Token %s: przeciążony (HTTP %d) — ponowna próba później",
+                    "[flux-tyler] ⚠ Token %s: przeciążony (HTTP %s) — ponowna próba później",
                     name,
-                    resp.status_code,
+                    status,
                 )
             else:
                 logger.warning(
-                    "[flux-tyler] ✗ Token %s: HTTP %d: %s",
+                    "[flux-tyler] ✗ Token %s: HTTP %s: %s",
                     name,
-                    resp.status_code,
-                    resp.text[:100],
+                    status,
+                    str(e)[:100],
                 )
 
-        except requests.exceptions.Timeout:
-            logger.warning("[flux-tyler] ⏱ Token %s: timeout (%ds)", name, HF_TIMEOUT)
-        except requests.exceptions.ConnectionError as e:
-            logger.warning(
-                "[flux-tyler] 🔌 Token %s: connection error: %s", name, str(e)[:80]
-            )
         except Exception as e:
             logger.warning("[flux-tyler] ❌ Token %s: wyjątek: %s", name, str(e)[:80])
 
@@ -4504,45 +4491,41 @@ def _generate_psychiatric_photo(
         return None
 
     seed = random.randint(0, 2**32 - 1)
-    payload = {
-        "inputs": prompt,
-        "parameters": {
-            "num_inference_steps": hf_params.get("num_inference_steps", 4),
-            "guidance_scale": hf_params.get("guidance_scale", 3.0),
-            "width": hf_params.get("width", 768),
-            "height": hf_params.get("height", 1024),
-            "seed": seed,
-        },
-    }
 
     raw_img = None
     for name, token in tokens:
-        headers = {"Authorization": f"Bearer {token}", "Accept": "image/png"}
         try:
-            resp = requests.post(
-                HF_API_URL, headers=headers, json=payload, timeout=HF_TIMEOUT
+            raw_img = generate_flux_bytes(
+                prompt,
+                token,
+                seed=seed,
+                steps=hf_params.get("num_inference_steps", 4),
+                guidance=hf_params.get("guidance_scale", 3.0),
+                width=hf_params.get("width", 768),
+                height=hf_params.get("height", 1024),
+                timeout=HF_TIMEOUT,
             )
-            if resp.status_code == 200:
-                raw_img = resp.content
-                logger.info("[psych-photo] FLUX OK token=%s (%d B)", name, len(raw_img))
-                break
-            elif resp.status_code == 402:
+            logger.info("[psych-photo] FLUX OK token=%s (%d B)", name, len(raw_img))
+            break
+        except HfHubHTTPError as e:
+            status = e.response.status_code if e.response is not None else None
+            if status == 402:
                 mark_dead(name)
                 logger.warning(
                     "[psych-photo] 402 token=%s — wyczerpane kredyty, dodano do czarnej listy",
                     name,
                 )
-            elif resp.status_code in (401, 403):
+            elif status in (401, 403):
                 mark_dead(name)
                 logger.warning(
-                    "[psych-photo] HTTP %d token=%s — nieważny, dodano do czarnej listy",
-                    resp.status_code,
+                    "[psych-photo] HTTP %s token=%s — nieważny, dodano do czarnej listy",
+                    status,
                     name,
                 )
-            elif resp.status_code == 429:
+            elif status == 429:
                 logger.warning("[psych-photo] 429 token=%s → następny", name)
             else:
-                logger.warning("[psych-photo] HTTP %d token=%s", resp.status_code, name)
+                logger.warning("[psych-photo] HTTP %s token=%s", status, name)
         except Exception as e:
             logger.warning("[psych-photo] Wyjątek token=%s: %s", name, e)
 

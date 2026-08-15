@@ -41,6 +41,7 @@ from flask import current_app
 
 from core.ai_client import call_deepseek, MODEL_TYLER
 from core.hf_token_manager import get_active_tokens, mark_dead, hf_tokens, is_dead
+from core.flux_client import generate_flux_bytes, HfHubHTTPError
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROMPTS_DIR = os.path.join(BASE_DIR, "prompts")
@@ -59,9 +60,6 @@ FILE_WYSLANNIK_IMAGE_STYLE = os.path.join(
 FILE_FLUX_FORBIDDEN = os.path.join(PROMPTS_DIR, "flux_forbidden.txt")
 FILE_FLUX_MUTATIONS = os.path.join(PROMPTS_DIR, "flux_mutations.txt")
 
-HF_API_URL = (
-    "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell"
-)
 HF_STEPS = 5
 HF_GUIDANCE = 3
 TIMEOUT_SEC = 55
@@ -507,14 +505,6 @@ def _generate_flux_image(
     token_attempts = []  # Śledź wszystkie próby
 
     seed = random.randint(0, 2**32 - 1)
-    payload = {
-        "inputs": prompt,
-        "parameters": {
-            "num_inference_steps": HF_STEPS,
-            "guidance_scale": HF_GUIDANCE,
-            "seed": seed,
-        },
-    }
     current_app.logger.info("[flux] prompt: %s seed: %d", prompt[:200], seed)
 
     # Próbuj każdy token po kolei
@@ -527,112 +517,85 @@ def _generate_flux_image(
             "error": None,
         }
 
-        headers = {"Authorization": f"Bearer {token}", "Accept": "image/png"}
         try:
             current_app.logger.info("[flux-attempt] Probuje token: %s", name)
-            resp = requests.post(
-                HF_API_URL, headers=headers, json=payload, timeout=TIMEOUT_SEC
+            png_bytes = generate_flux_bytes(
+                prompt, token, seed=seed, steps=HF_STEPS, guidance=HF_GUIDANCE,
+                timeout=TIMEOUT_SEC,
             )
 
-            # Wyciągnij info z headera Hugging Face
-            remaining = resp.headers.get("X-Remaining-Requests")
-            if remaining:
-                attempt["remaining_requests"] = int(remaining)
+            attempt["status"] = "SUCCESS"
+            attempt["http_code"] = 200
+            current_app.logger.info(
+                "[flux] ✓ Token %s: sukces (PNG %d B)", name, len(png_bytes),
+            )
 
-            attempt["http_code"] = resp.status_code
+            result = {
+                "base64": base64.b64encode(png_bytes).decode("ascii"),
+                "content_type": "image/png",
+                "filename": f"niebo_etap{etap}_seed{seed}.png",
+                "seed": seed,
+                "token_name": name,
+                "remaining_requests": None,  # provider routowany nie zwraca tego nagłówka
+                "size_png": f"{len(png_bytes) / 1024 / 1024:.1f}MB",
+            }
 
-            if resp.status_code == 200:
-                attempt["status"] = "SUCCESS"
-                current_app.logger.info(
-                    "[flux] ✓ Token %s: sukces (PNG %d B, pozostalo: %s zadan)",
-                    name,
-                    len(resp.content),
-                    remaining or "?",
-                )
+            # Dodaj info o tokenach jeśli jest tego wiele (dla debug)
+            if return_token_info and len(token_attempts) > 0:
+                result["token_info"] = token_attempts
 
-                result = {
-                    "base64": base64.b64encode(resp.content).decode("ascii"),
-                    "content_type": "image/png",
-                    "filename": f"niebo_etap{etap}_seed{seed}.png",
-                    "seed": seed,
-                    "token_name": name,
-                    "remaining_requests": int(remaining) if remaining else None,
-                    "size_png": f"{len(resp.content) / 1024 / 1024:.1f}MB",
-                }
+            return result
 
-                # Dodaj info o tokenach jeśli jest tego wiele (dla debug)
-                if return_token_info and len(token_attempts) > 0:
-                    result["token_info"] = token_attempts
+        except HfHubHTTPError as e:
+            status = e.response.status_code if e.response is not None else None
+            attempt["http_code"] = status
 
-                return result
-
-            elif resp.status_code in (401, 403):
+            if status in (401, 403):
                 mark_dead(name)
                 attempt["status"] = "INVALID_TOKEN"
-                attempt["error"] = f"Nieautoryzowany ({resp.status_code})"
+                attempt["error"] = f"Nieautoryzowany ({status})"
                 current_app.logger.warning(
-                    "[flux] ✗ Token %s: invalid/expired (HTTP %d) — dodano do czarnej listy",
+                    "[flux] ✗ Token %s: invalid/expired (HTTP %s) — dodano do czarnej listy",
                     name,
-                    resp.status_code,
+                    status,
                 )
 
-            elif resp.status_code == 402:
+            elif status == 402:
                 mark_dead(name)
                 attempt["status"] = "CREDITS_EXHAUSTED"
-                attempt["error"] = resp.text[:100]
+                attempt["error"] = str(e)[:100]
                 current_app.logger.warning(
                     "[flux] ✗ Token %s: 402 wyczerpane kredyty — dodano do czarnej listy",
                     name,
                 )
-                if _hf_credit_exhausted(resp):
+                if e.response is not None and _hf_credit_exhausted(e.response):
                     current_app.logger.warning(
                         "[flux] ✗ Token %s: globalne wyczerpanie kredytów HF — kończę próby",
                         name,
                     )
+                    token_attempts.append(attempt)
                     break
 
-            elif resp.status_code in (503, 529):
+            elif status in (503, 529):
                 attempt["status"] = "OVERLOADED"
-                attempt["error"] = f"Przeciazony ({resp.status_code})"
+                attempt["error"] = f"Przeciazony ({status})"
                 current_app.logger.warning(
-                    "[flux] ⚠ Token %s: serwer przeciazony (HTTP %d)",
-                    name,
-                    resp.status_code,
+                    "[flux] ⚠ Token %s: serwer przeciazony (HTTP %s)", name, status,
                 )
 
-            elif resp.status_code >= 500:
+            elif status is not None and status >= 500:
                 attempt["status"] = "SERVER_ERROR"
-                attempt["error"] = f"HTTP {resp.status_code}"
+                attempt["error"] = f"HTTP {status}"
                 current_app.logger.warning(
-                    "[flux] ✗ Token %s: blad serwera %d: %s",
-                    name,
-                    resp.status_code,
-                    resp.text[:100],
+                    "[flux] ✗ Token %s: blad serwera %s: %s", name, status, str(e)[:100],
                 )
 
             else:
-                attempt["status"] = f"HTTP_{resp.status_code}"
-                attempt["error"] = resp.text[:100] if resp.text else "Unknown error"
+                attempt["status"] = f"HTTP_{status}"
+                attempt["error"] = str(e)[:100]
                 current_app.logger.warning(
-                    "[flux] ✗ Token %s: blad %d: %s",
-                    name,
-                    resp.status_code,
-                    resp.text[:100],
+                    "[flux] ✗ Token %s: blad %s: %s", name, status, str(e)[:100],
                 )
-
-        except requests.exceptions.Timeout:
-            attempt["status"] = "TIMEOUT"
-            attempt["error"] = f"Timeout ({TIMEOUT_SEC}s)"
-            current_app.logger.warning(
-                "[flux] ⏱ Token %s: timeout (%ds)", name, TIMEOUT_SEC
-            )
-
-        except requests.exceptions.ConnectionError as e:
-            attempt["status"] = "CONNECTION_ERROR"
-            attempt["error"] = str(e)[:50]
-            current_app.logger.warning(
-                "[flux] 🔌 Token %s: connection error: %s", name, str(e)[:50]
-            )
 
         except Exception as e:
             attempt["status"] = "EXCEPTION"

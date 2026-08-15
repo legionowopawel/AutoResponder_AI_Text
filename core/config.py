@@ -20,11 +20,14 @@ DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 DEEPSEEK_MODEL = "deepseek-chat"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# HUGGING FACE / FLUX
+# FLUX / HUGGING FACE INFERENCE PROVIDERS
+# 2026-08: "hf-inference" (bezpośredni hosting HF) przestał obsługiwać
+# FLUX.1-schnell (HTTP 410). Generowanie idzie teraz przez routowanego
+# providera — patrz core/flux_client.py. Zmień HF_PROVIDER tutaj, jeśli
+# Together kiedyś też wycofa darmowy dostęp (np. na "fal-ai" albo "nscale").
 # ─────────────────────────────────────────────────────────────────────────────
-HF_API_URL = (
-    "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell"
-)
+HF_PROVIDER = "together"
+HF_MODEL_FLUX = "black-forest-labs/FLUX.1-schnell"
 HF_STEPS = 5
 HF_GUIDANCE = 2
 HF_TIMEOUT = 55
