@@ -1763,6 +1763,7 @@ def _generate_flux(
     width: int = 1024,
     height: int = 1024,
     test_mode: bool = False,
+    token_offset: int = 0,
 ) -> str | None:
     """Generuje obrazek FLUX — zwraca base64 JPG lub None."""
     # Używamy logging.getLogger zamiast current_app.logger,
@@ -1782,7 +1783,25 @@ def _generate_flux(
         substitute = _load_substitute_image()
         return substitute.get("base64") if substitute else None
 
-    log.info("[psych-flux] %s — prompt %.120s...", label, prompt)
+    # ── BUG FIX: rotacja tokenów per-wywołanie ──────────────────────────────
+    # gen_pacjent i gen_przedmioty są wywoływane RÓWNOLEGLE (ThreadPoolExecutor
+    # w _generate_photos_parallel). Bez przesunięcia obie funkcje zaczynałyby
+    # od identycznego tokens[0] w tym samym momencie — dwa jednoczesne
+    # requesty na TYM SAMYM tokenie do Together AI (routing przez HF)
+    # kolidują (błąd/429 dla obu), oba wątki przechodzą do tokens[1]
+    # w tej samej chwili i kolidują ponownie, itd. — w efekcie oba zdjęcia
+    # maszerują w lockstep przez całą listę tokenów i obie kończą na
+    # zastepczy.jpg, mimo że tokeny są aktywne i zwykly.py (sekwencyjnie,
+    # ze staggeringiem per panel_index) działa poprawnie na tych samych
+    # tokenach. Przesunięcie listy per-wywołanie eliminuje kolizję.
+    if tokens and token_offset:
+        offset = token_offset % len(tokens)
+        tokens = tokens[offset:] + tokens[:offset]
+
+    log.info(
+        "[psych-flux] %s — prompt %.120s... (token_offset=%d)",
+        label, prompt, token_offset,
+    )
 
     for name, token in tokens:
         try:
@@ -1852,7 +1871,9 @@ def _generate_photos_parallel(
     log = logging.getLogger(__name__)
 
     def gen_pacjent():
-        b64 = _generate_flux(prompt_pacjent, "photo_pacjent", test_mode=test_mode)
+        b64 = _generate_flux(
+            prompt_pacjent, "photo_pacjent", test_mode=test_mode, token_offset=0
+        )
         if b64:
             return {
                 "base64": b64,
@@ -1862,7 +1883,9 @@ def _generate_photos_parallel(
         return None
 
     def gen_przedmioty():
-        b64 = _generate_flux(prompt_przedmioty, "photo_przedmioty", test_mode=test_mode)
+        b64 = _generate_flux(
+            prompt_przedmioty, "photo_przedmioty", test_mode=test_mode, token_offset=1
+        )
         if b64:
             return {
                 "base64": b64,
