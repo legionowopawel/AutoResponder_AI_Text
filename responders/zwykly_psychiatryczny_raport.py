@@ -11,7 +11,6 @@ import base64
 import random
 import logging
 import requests
-import concurrent.futures
 from datetime import datetime, timedelta
 from flask import current_app
 
@@ -1864,35 +1863,27 @@ def _generate_flux(
 def _generate_photos_parallel(
     prompt_pacjent: str, prompt_przedmioty: str, test_mode: bool = False
 ) -> tuple:
-    """Generuje oba zdjęcia równolegle — zwraca (photo_1_dict, photo_2_dict)."""
-    # Używamy logging.getLogger zamiast current_app.logger,
-    # bo ta funkcja może być wywołana z wątku (ThreadPoolExecutor)
-    # gdzie nie ma kontekstu aplikacji Flask.
+    """Generuje oba zdjęcia SEKWENCYJNIE — zwraca (photo_1_dict, photo_2_dict).
+
+    UWAGA (2026-08-16): funkcja nazywa się nadal "_parallel" dla zgodności
+    z nazwą wywołań w reszcie pliku, ale NIE uruchamia już wątków równolegle.
+
+    Powód zmiany — potwierdzone logami produkcyjnymi z Render:
+      Router HF Inference Providers limituje współbieżność PER ADRES IP,
+      nie per token / per konto HF. Dwa równoczesne requesty (nawet z
+      różnych kont, mimo poprawnej rotacji token_offset) dostają 429
+      na KAŻDYM z ~30 tokenów pod rząd w ciągu kilku sekund — cała pula
+      zostaje przepalona zanim którykolwiek request się powiedzie.
+      zwykly.py działa poprawnie właśnie dlatego, że generuje panele
+      FLUX w pętli, nigdy nie wysyłając 2 requestów jednocześnie.
+
+      Rozwiązanie: zamiast ThreadPoolExecutor(max_workers=2), wołamy
+      _generate_flux() po kolei — dokładnie jak w zwykly.py. token_offset
+      nie jest już potrzebny (nie ma równoległości do rozjeżdżania), ale
+      zostawiamy różne wartości na wypadek przywrócenia równoległości
+      w przyszłości z odpowiednim throttlingiem.
+    """
     log = logging.getLogger(__name__)
-
-    def gen_pacjent():
-        b64 = _generate_flux(
-            prompt_pacjent, "photo_pacjent", test_mode=test_mode, token_offset=0
-        )
-        if b64:
-            return {
-                "base64": b64,
-                "content_type": "image/jpeg",
-                "filename": f"psych_pacjent_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg",
-            }
-        return None
-
-    def gen_przedmioty():
-        b64 = _generate_flux(
-            prompt_przedmioty, "photo_przedmioty", test_mode=test_mode, token_offset=1
-        )
-        if b64:
-            return {
-                "base64": b64,
-                "content_type": "image/jpeg",
-                "filename": f"psych_przedmioty_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg",
-            }
-        return None
 
     # Szybkie wyjście gdy brak aktywnych tokenów — nie czekaj 5 minut
     if not get_active_tokens():
@@ -1910,14 +1901,35 @@ def _generate_photos_parallel(
         return sub_dict, sub_dict
 
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            fut1 = executor.submit(gen_pacjent)
-            fut2 = executor.submit(gen_przedmioty)
-            p1 = fut1.result(timeout=120)
-            p2 = fut2.result(timeout=120)
-            return p1, p2
+        b64_pacjent = _generate_flux(
+            prompt_pacjent, "photo_pacjent", test_mode=test_mode, token_offset=0
+        )
+        photo_1 = (
+            {
+                "base64": b64_pacjent,
+                "content_type": "image/jpeg",
+                "filename": f"psych_pacjent_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg",
+            }
+            if b64_pacjent
+            else None
+        )
+
+        b64_przedmioty = _generate_flux(
+            prompt_przedmioty, "photo_przedmioty", test_mode=test_mode, token_offset=0
+        )
+        photo_2 = (
+            {
+                "base64": b64_przedmioty,
+                "content_type": "image/jpeg",
+                "filename": f"psych_przedmioty_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg",
+            }
+            if b64_przedmioty
+            else None
+        )
+
+        return photo_1, photo_2
     except Exception as e:
-        log.error("[psych-flux] Błąd równoległy: %s", e)
+        log.error("[psych-flux] Błąd generowania sekwencyjnego: %s", e)
         return None, None
 
 
