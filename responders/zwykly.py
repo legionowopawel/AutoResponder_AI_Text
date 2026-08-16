@@ -29,6 +29,7 @@ import json
 import html as html_module
 import base64
 import random
+import time
 import logging
 import requests
 from datetime import datetime
@@ -2024,6 +2025,47 @@ def _load_substitute_image() -> dict | None:
         return None
 
 
+def _response_body_snippet(resp, max_len: int = 200) -> str:
+    """Zwraca skrócony fragment treści odpowiedzi błędu — do logów diagnostycznych.
+
+    Bez tego 429/400 są 'czarną skrzynką' — wiemy TYLKO kod statusu, nie wiemy
+    czy to chwilowy rate-limit czy trwałe wyczerpanie limitu konta.
+    """
+    if resp is None:
+        return "(brak response)"
+    try:
+        return resp.text[:max_len]
+    except Exception as e:
+        return f"(nie udało się odczytać body: {e})"
+
+
+def _quota_permanently_exhausted(resp) -> bool:
+    """Sprawdza czy treść odpowiedzi błędu wskazuje na TRWAŁE wyczerpanie
+    limitu konta (miesięczny/dzienny limit kredytów), a nie chwilowy rate-limit.
+
+    Rozpoznajemy po słowach kluczowych w polu 'error' odpowiedzi JSON.
+    Lista słów jest heurystyką — jeśli provider używa innego sformułowania,
+    trafi do logów jako zwykły rate-limit (bezpieczny fallback: token
+    zostanie po prostu odpytany ponownie przy następnym mailu zamiast
+    trwale zablokowany na podstawie niepewnego sygnału).
+    """
+    if resp is None:
+        return False
+    try:
+        data = resp.json()
+        error_text = str(data.get("error", "")).lower()
+    except Exception:
+        return False
+    exhaustion_keywords = (
+        "exhausted",
+        "exceeded",
+        "quota",
+        "monthly included credits",
+        "insufficient",
+    )
+    return any(kw in error_text for kw in exhaustion_keywords)
+
+
 def _generate_flux_image(
     prompt: str, panel_index: int = 0, test_mode: bool = False
 ) -> dict | None:
@@ -2076,7 +2118,16 @@ def _generate_flux_image(
         seed,
     )
 
-    for name, token in tokens:
+    for attempt_idx, (name, token) in enumerate(tokens):
+        # ── Throttle między próbami kolejnych tokenów ──────────────────────
+        # Logi produkcyjne pokazały, że próby co ~200ms — nawet na RÓŻNYCH
+        # tokenach/kontach — dostają 429 na każdym z 30 tokenów pod rząd.
+        # To wskazuje na throttling providera PER ADRES IP (Render), a nie
+        # per token. Bez odstępu retry-loop wygląda dla providera jak
+        # burst/spam. Krótka pauza między próbami (poza pierwszą) znacząco
+        # zmniejsza ryzyko trafienia w ten limit.
+        if attempt_idx > 0:
+            time.sleep(1.2)
         try:
             logger.info("[flux-tyler] Próbuję token: %s", name)
             png_bytes = generate_flux_bytes(
@@ -2120,6 +2171,29 @@ def _generate_flux_image(
                     name,
                     status,
                 )
+            elif status == 429:
+                # ── 429 może znaczyć DWIE różne rzeczy ─────────────────────
+                # (a) chwilowy rate-limit (poczekaj i spróbuj ponownie później)
+                # (b) trwałe wyczerpanie miesięcznego limitu kredytów tego
+                #     konta (nie odblokuje się przez kolejne minuty/godziny)
+                # Bez treści body nie da się ich odróżnić — logujemy body
+                # (max 200 znaków) żeby wiedzieć na przyszłość, i sprawdzamy
+                # czy zawiera sygnał trwałego wyczerpania limitu.
+                body_snippet = _response_body_snippet(e.response)
+                if _quota_permanently_exhausted(e.response):
+                    mark_dead(name)
+                    logger.warning(
+                        "[flux-tyler] ✗ Token %s: 429 wygląda na TRWAŁE wyczerpanie "
+                        "limitu (body: %s) — dodano do czarnej listy sesji",
+                        name,
+                        body_snippet,
+                    )
+                else:
+                    logger.warning(
+                        "[flux-tyler] ⚠ Token %s: 429 rate-limit (body: %s) → następny",
+                        name,
+                        body_snippet,
+                    )
             elif status in (503, 529):
                 logger.warning(
                     "[flux-tyler] ⚠ Token %s: przeciążony (HTTP %s) — ponowna próba później",

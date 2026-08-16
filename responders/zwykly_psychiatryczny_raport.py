@@ -9,6 +9,7 @@ import re
 import json
 import base64
 import random
+import time
 import logging
 import requests
 from datetime import datetime, timedelta
@@ -1746,6 +1747,48 @@ def _hf_credit_exhausted(resp) -> bool:
         return False
 
 
+def _response_body_snippet(resp, max_len: int = 200) -> str:
+    """Zwraca skrócony fragment treści odpowiedzi błędu — do logów diagnostycznych.
+
+    Bez tego 429 jest 'czarną skrzynką' — wiemy TYLKO kod statusu, nie wiemy
+    czy to chwilowy rate-limit czy trwałe wyczerpanie limitu konta.
+    """
+    if resp is None:
+        return "(brak response)"
+    try:
+        return resp.text[:max_len]
+    except Exception as e:
+        return f"(nie udało się odczytać body: {e})"
+
+
+def _quota_permanently_exhausted(resp) -> bool:
+    """Sprawdza czy treść odpowiedzi błędu (429) wskazuje na TRWAŁE wyczerpanie
+    limitu konta (miesięczny/dzienny limit kredytów), a nie chwilowy rate-limit.
+
+    Szersza wersja _hf_credit_exhausted (która sprawdza tylko słowo 'exhausted'
+    dla 402) — 429 bywa używane przez providerów zarówno dla rate-limitu jak
+    i dla wyczerpanego limitu, więc sprawdzamy więcej słów kluczowych.
+    Heurystyka: bezpieczny fallback to potraktowanie jako zwykły rate-limit
+    (token zostanie po prostu odpytany ponownie przy następnym mailu zamiast
+    trwale zablokowany na podstawie niepewnego sygnału).
+    """
+    if resp is None:
+        return False
+    try:
+        data = resp.json()
+        error_text = str(data.get("error", "")).lower()
+    except Exception:
+        return False
+    exhaustion_keywords = (
+        "exhausted",
+        "exceeded",
+        "quota",
+        "monthly included credits",
+        "insufficient",
+    )
+    return any(kw in error_text for kw in exhaustion_keywords)
+
+
 def _substitute_or_none(label: str) -> str | None:
     """Zwraca obrazek zastępczy lub None."""
     substitute = _load_substitute_image()
@@ -1802,7 +1845,16 @@ def _generate_flux(
         label, prompt, token_offset,
     )
 
-    for name, token in tokens:
+    for attempt_idx, (name, token) in enumerate(tokens):
+        # ── Throttle między próbami kolejnych tokenów ──────────────────────
+        # Logi produkcyjne (2026-08-16 09:20) pokazały: nawet w pełni
+        # sekwencyjne próby, ~200ms odstępu, dostają 429 na WSZYSTKICH
+        # 30 tokenach pod rząd — u obu zdjęć, minuty po tym jak zwykly.py
+        # (osobny pipeline) trafił na to samo dla panelu 6. To throttling
+        # providera PER ADRES IP (Render), nie per token/konto. Krótka
+        # pauza między próbami zmniejsza ryzyko trafienia w ten limit.
+        if attempt_idx > 0:
+            time.sleep(1.2)
         try:
             png_bytes = generate_flux_bytes(
                 prompt, token, seed=random.randint(0, 2**32 - 1),
@@ -1846,7 +1898,23 @@ def _generate_flux(
                     name,
                 )
             elif status == 429:
-                log.warning("[psych-flux] %s 429 token=%s → następny", label, name)
+                body_snippet = _response_body_snippet(e.response)
+                if _quota_permanently_exhausted(e.response):
+                    mark_dead(name)
+                    log.warning(
+                        "[psych-flux] %s 429 token=%s wygląda na TRWAŁE wyczerpanie "
+                        "limitu (body: %s) — dodano do czarnej listy",
+                        label,
+                        name,
+                        body_snippet,
+                    )
+                else:
+                    log.warning(
+                        "[psych-flux] %s 429 token=%s rate-limit (body: %s) → następny",
+                        label,
+                        name,
+                        body_snippet,
+                    )
             else:
                 log.warning(
                     "[psych-flux] %s HTTP %s token=%s", label, status, name
