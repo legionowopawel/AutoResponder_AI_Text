@@ -2118,16 +2118,24 @@ def _generate_flux_image(
         seed,
     )
 
+    # ── Backoff wykładniczy + wczesne przerwanie ────────────────────────────
+    # Log 2026-08-16 09:44-09:45 pokazał body błędu wprost: "rate limits are
+    # dynamic — they shift with live model capacity and your traffic share".
+    # To NIE jest limit per-token/konto — jest zbiorczy dla całego ruchu.
+    # Mielenie przez wszystkich 30 tokenów w stałym tempie to gwarantowana
+    # porażka i strata czasu. Rosnący odstęp + wczesne przerwanie po kilku
+    # identycznych "dynamic capacity" 429 z rzędu.
+    BACKOFF_START = 2.0
+    BACKOFF_CAP = 12.0
+    MAX_CONSECUTIVE_CAPACITY_429 = 5
+
+    delay = BACKOFF_START
+    consecutive_capacity_429 = 0
+
     for attempt_idx, (name, token) in enumerate(tokens):
-        # ── Throttle między próbami kolejnych tokenów ──────────────────────
-        # Logi produkcyjne pokazały, że próby co ~200ms — nawet na RÓŻNYCH
-        # tokenach/kontach — dostają 429 na każdym z 30 tokenów pod rząd.
-        # To wskazuje na throttling providera PER ADRES IP (Render), a nie
-        # per token. Bez odstępu retry-loop wygląda dla providera jak
-        # burst/spam. Krótka pauza między próbami (poza pierwszą) znacząco
-        # zmniejsza ryzyko trafienia w ten limit.
         if attempt_idx > 0:
-            time.sleep(1.2)
+            time.sleep(delay)
+            delay = min(delay * 1.6, BACKOFF_CAP)
         try:
             logger.info("[flux-tyler] Próbuję token: %s", name)
             png_bytes = generate_flux_bytes(
@@ -2188,12 +2196,29 @@ def _generate_flux_image(
                         name,
                         body_snippet,
                     )
+                    consecutive_capacity_429 = 0
                 else:
+                    consecutive_capacity_429 += 1
                     logger.warning(
-                        "[flux-tyler] ⚠ Token %s: 429 rate-limit (body: %s) → następny",
+                        "[flux-tyler] ⚠ Token %s: 429 dynamic-capacity rate-limit "
+                        "(%d/%d z rzędu, body: %s) → następny za %.1fs",
                         name,
+                        consecutive_capacity_429,
+                        MAX_CONSECUTIVE_CAPACITY_429,
                         body_snippet,
+                        delay,
                     )
+                    if consecutive_capacity_429 >= MAX_CONSECUTIVE_CAPACITY_429:
+                        logger.warning(
+                            "[flux-tyler] Panel %d — %d kolejnych 429 dynamic-capacity — "
+                            "limit dotyczy całego ruchu, nie tego tokenu. Przerywam "
+                            "wcześniej (zamiast dobijać resztę %d tokenów bez sensu) "
+                            "— używam zastepczy.jpg",
+                            panel_index,
+                            consecutive_capacity_429,
+                            len(tokens) - attempt_idx - 1,
+                        )
+                        break
             elif status in (503, 529):
                 logger.warning(
                     "[flux-tyler] ⚠ Token %s: przeciążony (HTTP %s) — ponowna próba później",
@@ -2201,11 +2226,12 @@ def _generate_flux_image(
                     status,
                 )
             else:
+                body_snippet = _response_body_snippet(e.response)
                 logger.warning(
-                    "[flux-tyler] ✗ Token %s: HTTP %s: %s",
+                    "[flux-tyler] ✗ Token %s: HTTP %s (body: %s)",
                     name,
                     status,
-                    str(e)[:100],
+                    body_snippet,
                 )
 
         except Exception as e:

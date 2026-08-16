@@ -1845,16 +1845,26 @@ def _generate_flux(
         label, prompt, token_offset,
     )
 
+    # ── Backoff wykładniczy + wczesne przerwanie ────────────────────────────
+    # Log 2026-08-16 09:44-09:45 pokazał body błędu wprost: "rate limits are
+    # dynamic — they shift with live model capacity and your traffic share".
+    # To NIE jest limit per-token/konto — jest zbiorczy dla całego ruchu.
+    # Sens: mielenie przez wszystkich 30 tokenów w tempie 1.2s to gwarantowana
+    # porażka (limit dotyczy WSZYSTKICH kont naraz) i tylko marnuje ~40s+.
+    # Zamiast tego: rosnący odstęp między próbami, i jeśli kilka prób z rzędu
+    # dostanie ten sam "dynamic capacity" 429 — przerywamy wcześniej i lecimy
+    # od razu na zastepczy.jpg, zamiast dobijać resztę listy bez sensu.
+    BACKOFF_START = 2.0
+    BACKOFF_CAP = 12.0
+    MAX_CONSECUTIVE_CAPACITY_429 = 5
+
+    delay = BACKOFF_START
+    consecutive_capacity_429 = 0
+
     for attempt_idx, (name, token) in enumerate(tokens):
-        # ── Throttle między próbami kolejnych tokenów ──────────────────────
-        # Logi produkcyjne (2026-08-16 09:20) pokazały: nawet w pełni
-        # sekwencyjne próby, ~200ms odstępu, dostają 429 na WSZYSTKICH
-        # 30 tokenach pod rząd — u obu zdjęć, minuty po tym jak zwykly.py
-        # (osobny pipeline) trafił na to samo dla panelu 6. To throttling
-        # providera PER ADRES IP (Render), nie per token/konto. Krótka
-        # pauza między próbami zmniejsza ryzyko trafienia w ten limit.
         if attempt_idx > 0:
-            time.sleep(1.2)
+            time.sleep(delay)
+            delay = min(delay * 1.6, BACKOFF_CAP)
         try:
             png_bytes = generate_flux_bytes(
                 prompt, token, seed=random.randint(0, 2**32 - 1),
@@ -1908,16 +1918,35 @@ def _generate_flux(
                         name,
                         body_snippet,
                     )
+                    consecutive_capacity_429 = 0
                 else:
+                    consecutive_capacity_429 += 1
                     log.warning(
-                        "[psych-flux] %s 429 token=%s rate-limit (body: %s) → następny",
+                        "[psych-flux] %s 429 token=%s dynamic-capacity rate-limit "
+                        "(%d/%d z rzędu, body: %s) → następny za %.1fs",
                         label,
                         name,
+                        consecutive_capacity_429,
+                        MAX_CONSECUTIVE_CAPACITY_429,
                         body_snippet,
+                        delay,
                     )
+                    if consecutive_capacity_429 >= MAX_CONSECUTIVE_CAPACITY_429:
+                        log.warning(
+                            "[psych-flux] %s — %d kolejnych 429 dynamic-capacity — "
+                            "limit dotyczy całego ruchu, nie tego tokenu. Przerywam "
+                            "wcześniej (zamiast dobijać resztę %d tokenów bez sensu) "
+                            "— używam zastepczy.jpg",
+                            label,
+                            consecutive_capacity_429,
+                            len(tokens) - attempt_idx - 1,
+                        )
+                        break
             else:
+                body_snippet = _response_body_snippet(e.response)
                 log.warning(
-                    "[psych-flux] %s HTTP %s token=%s", label, status, name
+                    "[psych-flux] %s HTTP %s token=%s (body: %s)",
+                    label, status, name, body_snippet,
                 )
         except Exception as e:
             log.warning("[psych-flux] %s wyjątek token=%s: %s", label, name, e)
