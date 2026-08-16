@@ -1800,18 +1800,39 @@ def _substitute_or_none(label: str) -> str | None:
 def _generate_flux(
     prompt: str,
     label: str,
-    steps: int = 28,
-    guidance: float = 7.0,
+    steps: int = HF_STEPS,
+    guidance: float = HF_GUIDANCE,
     width: int = 1024,
     height: int = 1024,
     test_mode: bool = False,
     token_offset: int = 0,
 ) -> str | None:
-    """Generuje obrazek FLUX — zwraca base64 JPG lub None."""
+    """Generuje obrazek FLUX — zwraca base64 JPG lub None.
+
+    UWAGA (2026-08-16): steps/guidance domyślnie biorą się z HF_STEPS/
+    HF_GUIDANCE (core.config) — te same wartości, których zwykly.py już
+    poprawnie używa. Wcześniej ta funkcja miała własne, niezależne
+    hardkodowane domyślne (steps=28), które nigdy nie były aktualizowane
+    razem z configiem — 28 przekracza limit providera (1-12), więc KAŻDE
+    wywołanie kończyło się HTTP 400 "steps must be between 1 and 12",
+    niezależnie od tokenu. To była prawdziwa przyczyna niegenerowania się
+    zdjęć — nie limity/tokeny, tylko nieprawidłowy parametr żądania.
+    """
     # Używamy logging.getLogger zamiast current_app.logger,
     # bo ta funkcja może być wywołana z wątku (ThreadPoolExecutor)
     # gdzie nie ma kontekstu aplikacji Flask.
     log = logging.getLogger(__name__)
+
+    # Zabezpieczenie: provider odrzuca steps poza 1-12 (HTTP 400 dla KAŻDEGO
+    # tokenu, niezależnie od konta). Clamp na wszelki wypadek, gdyby config
+    # znów rozjechał się z realnym limitem providera.
+    if steps < 1 or steps > 12:
+        log.warning(
+            "[psych-flux] %s — steps=%d poza zakresem providera (1-12), "
+            "przycinam do bezpiecznej wartości",
+            label, steps,
+        )
+        steps = max(1, min(steps, 12))
 
     if test_mode:
         substitute = _load_substitute_image()
