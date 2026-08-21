@@ -26,7 +26,10 @@ DEEPSEEK_MODEL = "deepseek-chat"
 # providera — patrz core/flux_client.py. Zmień HF_PROVIDER tutaj, jeśli
 # Together kiedyś też wycofa darmowy dostęp (np. na "fal-ai" albo "nscale").
 # ─────────────────────────────────────────────────────────────────────────────
-HF_PROVIDER = "together"
+HF_PROVIDER = "auto"
+HF_PROVIDER_PRIORITY = ["fal-ai", "replicate", "wavespeed", "nscale", "together"]
+HF_PROVIDER_CACHE_TTL = 300
+HF_PROVIDER_HEALTHCHECK_TIMEOUT = 15
 HF_MODEL_FLUX = "black-forest-labs/FLUX.1-schnell"
 HF_STEPS = 5
 HF_GUIDANCE = 2
