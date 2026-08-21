@@ -32,6 +32,7 @@ import random
 import time
 import logging
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 # Bezpieczny logger modułu — działa w wątkach bez kontekstu Flask
@@ -2067,7 +2068,10 @@ def _quota_permanently_exhausted(resp) -> bool:
 
 
 def _generate_flux_image(
-    prompt: str, panel_index: int = 0, test_mode: bool = False
+    prompt: str,
+    panel_index: int = 0,
+    test_mode: bool = False,
+    deadline: float | None = None,
 ) -> dict | None:
     """
     Generuje jeden obrazek FLUX z losowym seed.
@@ -2078,6 +2082,12 @@ def _generate_flux_image(
     - Jeśli test_mode=True (przychodzi z KEYWORDS_TEST via disable_flux),
       to zwracamy zastępczy obrazek zamiast generować FLUX.
     - To oszczędza tokeny HF_TOKEN.
+
+    Parametr deadline:
+    - Timestamp (time.monotonic()) po którym przerywamy próby tokenów HF
+      i lecimy fallbackiem, niezależnie od tego ile tokenów zostało.
+    - Chroni przed retry-stormem, który potrafi trwać kilka minut na panel
+      i wystawia cały pipeline na ryzyko zabicia przez SIGTERM w trakcie.
     """
     # ── KEYWORDS_TEST (disable_flux) → test_mode ──────────────────────────────
     # Jeśli test_mode=True, wy generowanie FLUX i użyj zastępczego obrazka
@@ -2133,8 +2143,23 @@ def _generate_flux_image(
     consecutive_capacity_429 = 0
 
     for attempt_idx, (name, token) in enumerate(tokens):
+        if deadline is not None and time.monotonic() >= deadline:
+            logger.warning(
+                "[flux-tyler] Panel %d — globalny budżet czasowy wyczerpany "
+                "przed próbą tokenu %s (%d/%d tokenów sprawdzonych) — "
+                "przerywam wcześniej, używam zastepczy.jpg",
+                panel_index,
+                name,
+                attempt_idx,
+                len(tokens),
+            )
+            break
         if attempt_idx > 0:
-            time.sleep(delay)
+            # Nie śpij dłużej niż to, co zostało do deadline'u
+            sleep_for = delay
+            if deadline is not None:
+                sleep_for = max(0.0, min(delay, deadline - time.monotonic()))
+            time.sleep(sleep_for)
             delay = min(delay * 1.6, BACKOFF_CAP)
         try:
             logger.info("[flux-tyler] Próbuję token: %s", name)
@@ -2489,7 +2514,24 @@ def _generate_triptych(
         panel_rules, session_vars, style_config
     )
 
-    # ── Generuj obrazki równolegle (bez dodatkowych calli DeepSeek) ──────────
+    # ── Generuj obrazki RÓWNOLEGLE (bez dodatkowych calli DeepSeek) ──────────
+    # UWAGA: przez lata tu był tylko komentarz "równolegle" i zwykła pętla for
+    # (sekwencyjnie po 1 panelu). Przy retry-stormie HF (wielu tokenów, rosnący
+    # backoff) samo wyczerpanie 1 panelu potrafiło trwać kilka minut — a przy
+    # 7 panelach sekwencyjnie to było naprawdę długo. Proces (gunicorn worker,
+    # 512 MB RAM na Render) potrafił dostać SIGTERM (deploy/health-check/OOM)
+    # w dowolnym momencie tej pętli, zabijając daemon thread w środku roboty —
+    # zanim doszło do wysyłki. Fallback zastepczy.jpg działał zawsze poprawnie;
+    # problem był w czasie, jaki zajmowało do niego dojście.
+    #
+    # Rozwiązanie: (1) realna równoległość przez ThreadPoolExecutor, (2)
+    # globalny budżet czasowy na CAŁĄ generację 7 paneli — po przekroczeniu
+    # nowe próby tokenów HF się nie zaczynają, od razu leci fallback.
+    PANEL_GLOBAL_BUDGET_SEC = 75.0  # twardy limit na wszystkie 7 paneli łącznie
+    MAX_PARALLEL_PANELS = 4  # nie odpalaj wszystkich 7 naraz — chroni RAM i tokeny
+
+    deadline = time.monotonic() + PANEL_GLOBAL_BUDGET_SEC
+
     def _gen_panel(panel_idx):
         rule_text = panel_rules[panel_idx - 1]
         flux_prompt = flux_prompts[panel_idx - 1]
@@ -2505,7 +2547,10 @@ def _generate_triptych(
         caption = rule_text[:120] if rule_text else f"Zasada {panel_idx}"
         image = (
             _generate_flux_image(
-                flux_prompt, panel_index=panel_idx, test_mode=test_mode
+                flux_prompt,
+                panel_index=panel_idx,
+                test_mode=test_mode,
+                deadline=deadline,
             )
             if flux_prompt
             else None
@@ -2516,22 +2561,31 @@ def _generate_triptych(
         return panel_idx, image, flux_prompt, [], caption
 
     results = {}
-    logger.info("[zwykly-img] Generuję 7 paneli FLUX sekwencyjnie")
+    logger.info(
+        "[zwykly-img] Generuję 7 paneli FLUX równolegle (max %d naraz, "
+        "budżet globalny %.0fs)",
+        MAX_PARALLEL_PANELS,
+        PANEL_GLOBAL_BUDGET_SEC,
+    )
 
-    for i in range(1, 8):
-        try:
-            idx, img, prompt, uvars, caption = _gen_panel(i)
-            results[idx] = (img, prompt, uvars, caption)
-            if img:
-                logger.info("[zwykly-img] Panel %d/7 OK", idx)
-            else:
-                logger.warning(
-                    "[zwykly-img] Panel %d/7 brak obrazka (HF limit lub brak zasady)",
-                    idx,
-                )
-        except Exception as e:
-            logger.error("[zwykly-img] Panel %d/7 błąd: %s", i, e)
-            results[i] = (None, "", [], f"Zasada {i}")
+    with ThreadPoolExecutor(max_workers=MAX_PARALLEL_PANELS) as executor:
+        futures = {executor.submit(_gen_panel, i): i for i in range(1, 8)}
+        for future in as_completed(futures):
+            i = futures[future]
+            try:
+                idx, img, prompt, uvars, caption = future.result()
+                results[idx] = (img, prompt, uvars, caption)
+                if img:
+                    logger.info("[zwykly-img] Panel %d/7 OK", idx)
+                else:
+                    logger.warning(
+                        "[zwykly-img] Panel %d/7 brak obrazka (HF limit, budżet "
+                        "czasowy lub brak zasady)",
+                        idx,
+                    )
+            except Exception as e:
+                logger.error("[zwykly-img] Panel %d/7 błąd: %s", i, e)
+                results[i] = (None, "", [], f"Zasada {i}")
 
     # Złóż w kolejności 1-7
     images, panel_prompts, panel_assignments = [], [], []

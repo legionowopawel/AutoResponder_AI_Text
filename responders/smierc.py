@@ -32,6 +32,7 @@ Obrazki FLUX:
 
 import os
 import re
+import time
 import random
 import base64
 import requests
@@ -433,7 +434,11 @@ def _load_substitute_image() -> dict | None:
 
 
 def _generate_flux_image(
-    prompt: str, etap: int = 0, return_token_info: bool = False, test_mode: bool = False
+    prompt: str,
+    etap: int = 0,
+    return_token_info: bool = False,
+    test_mode: bool = False,
+    deadline: float | None = None,
 ) -> dict | None:
     """
     Generuje jeden obrazek FLUX z losowym seed.
@@ -445,6 +450,11 @@ def _generate_flux_image(
         etap: Numer etapu (dla logowania)
         return_token_info: Jeśli True, zwraca info o próbach tokenów
         test_mode: Jeśli True, używa obrazu zastępczego zamiast wywoływać HF
+        deadline: Timestamp (time.monotonic()) po którym przerywamy próby
+            kolejnych tokenów HF i lecimy fallbackiem — chroni przed
+            retry-stormem trwającym kilka minut, który wystawia cały
+            pipeline (daemon thread) na ryzyko zabicia przez SIGTERM
+            (deploy/health-check/OOM) zanim dojdzie do wysyłki.
 
     Returns:
         - Sukces: dict z base64, content_type, filename
@@ -508,7 +518,18 @@ def _generate_flux_image(
     current_app.logger.info("[flux] prompt: %s seed: %d", prompt[:200], seed)
 
     # Próbuj każdy token po kolei
-    for name, token in tokens:
+    for attempt_idx, (name, token) in enumerate(tokens):
+        if deadline is not None and time.monotonic() >= deadline:
+            current_app.logger.warning(
+                "[flux] Etap %d — globalny budżet czasowy wyczerpany przed "
+                "próbą tokenu %s (%d/%d tokenów sprawdzonych) — przerywam "
+                "wcześniej, używam zastepczy.jpg",
+                etap,
+                name,
+                attempt_idx,
+                len(tokens),
+            )
+            break
         attempt = {
             "token_name": name,
             "status": "unknown",
@@ -626,29 +647,39 @@ def _generate_multiple_flux_images(
     test_mode: bool = False,
 ) -> list:
     """Generuje N obrazków FLUX (z losowym seed dla każdego). Jeśli token HF wyczerpany — używa zastepczy.jpg."""
+    # Globalny budżet czasowy na WSZYSTKIE `count` obrazków tego etapu razem —
+    # niezależny od liczby tokenów HF. Bez tego retry-storm na jednym obrazku
+    # potrafi zjeść kilka minut i wystawić cały pipeline na SIGTERM w trakcie.
+    FLUX_MULTI_BUDGET_SEC = 60.0
+    deadline = time.monotonic() + FLUX_MULTI_BUDGET_SEC
+
     images = []
     hf_exhausted = False  # Flaga: wszystkie tokeny martwe, nie próbuj dalej
     for i in range(count):
-        if hf_exhausted:
-            # Tokeny wyczerpane — użyj zastepczy.jpg dla pozostałych
+        budget_exhausted = time.monotonic() >= deadline
+        if hf_exhausted or budget_exhausted:
+            # Tokeny wyczerpane LUB globalny budżet czasowy przekroczony —
+            # użyj zastepczy.jpg dla pozostałych, nie zaczynaj nowego retry-stormu
             substitute = _load_substitute_image()
             if substitute:
                 s = dict(substitute)
                 s["filename"] = f"niebo_etap{etap}_flux_zastepczy_{i+1}.jpg"
                 images.append(s)
                 current_app.logger.warning(
-                    "[flux-multi] Obrazek %d/%d — brak tokenu HF, używam zastepczy.jpg",
+                    "[flux-multi] Obrazek %d/%d — %s, używam zastepczy.jpg",
                     i + 1,
                     count,
+                    "budżet czasowy wyczerpany" if budget_exhausted else "brak tokenu HF",
                 )
             else:
                 current_app.logger.warning(
-                    "[flux-multi] Obrazek %d/%d — brak tokenu HF i brak zastepczy.jpg",
+                    "[flux-multi] Obrazek %d/%d — %s i brak zastepczy.jpg",
                     i + 1,
                     count,
+                    "budżet czasowy wyczerpany" if budget_exhausted else "brak tokenu HF",
                 )
             continue
-        img = _generate_flux_image(prompt, etap=etap, test_mode=test_mode)
+        img = _generate_flux_image(prompt, etap=etap, test_mode=test_mode, deadline=deadline)
         if img and "base64" in img:
             if kompresja_jpg > 0:
                 img = _compress_flux_image(img, kompresja_jpg)
