@@ -32,7 +32,6 @@ import random
 import time
 import logging
 import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 # Bezpieczny logger modułu — działa w wątkach bez kontekstu Flask
@@ -2514,21 +2513,21 @@ def _generate_triptych(
         panel_rules, session_vars, style_config
     )
 
-    # ── Generuj obrazki RÓWNOLEGLE (bez dodatkowych calli DeepSeek) ──────────
-    # UWAGA: przez lata tu był tylko komentarz "równolegle" i zwykła pętla for
-    # (sekwencyjnie po 1 panelu). Przy retry-stormie HF (wielu tokenów, rosnący
-    # backoff) samo wyczerpanie 1 panelu potrafiło trwać kilka minut — a przy
-    # 7 panelach sekwencyjnie to było naprawdę długo. Proces (gunicorn worker,
-    # 512 MB RAM na Render) potrafił dostać SIGTERM (deploy/health-check/OOM)
-    # w dowolnym momencie tej pętli, zabijając daemon thread w środku roboty —
-    # zanim doszło do wysyłki. Fallback zastepczy.jpg działał zawsze poprawnie;
-    # problem był w czasie, jaki zajmowało do niego dojście.
-    #
-    # Rozwiązanie: (1) realna równoległość przez ThreadPoolExecutor, (2)
-    # globalny budżet czasowy na CAŁĄ generację 7 paneli — po przekroczeniu
-    # nowe próby tokenów HF się nie zaczynają, od razu leci fallback.
+    # ── Generuj obrazki SEKWENCYJNIE (budżet czasowy zamiast równoległości) ──
+    # UWAGA / HISTORIA BŁĘDU: pierwotnie tu był tylko komentarz "równolegle"
+    # i zwykła pętla for (naprawdę sekwencyjnie). Próba naprawy przez literalne
+    # zrównoleglenie (ThreadPoolExecutor, 4 panele naraz) okazała się BŁĘDNA —
+    # patrz komentarz w _generate_flux_image (BACKOFF_START/BACKOFF_CAP niżej):
+    # limit rate-limitingu na routowanym providerze HF jest ZBIORCZY DLA
+    # CAŁEGO RUCHU z tego serwera, nie per-token. 4 równoczesne requesty
+    # nagle podbijają "traffic share" i wywołują 429 dynamic-capacity na
+    # WSZYSTKICH naraz — code hits MAX_CONSECUTIVE_CAPACITY_429 szybko i
+    # wszystkie panele lecą fallbackiem zastepczy.jpg. Prawdziwe źródło
+    # oryginalnego problemu (SIGTERM zabijający pipeline w trakcie retry-
+    # -stormu) to był ZBYT DŁUGI CZAS, nie brak równoległości — dlatego
+    # rozwiązaniem jest wyłącznie globalny budżet czasowy poniżej, bez
+    # równoległych requestów do HF.
     PANEL_GLOBAL_BUDGET_SEC = 75.0  # twardy limit na wszystkie 7 paneli łącznie
-    MAX_PARALLEL_PANELS = 4  # nie odpalaj wszystkich 7 naraz — chroni RAM i tokeny
 
     deadline = time.monotonic() + PANEL_GLOBAL_BUDGET_SEC
 
@@ -2562,30 +2561,25 @@ def _generate_triptych(
 
     results = {}
     logger.info(
-        "[zwykly-img] Generuję 7 paneli FLUX równolegle (max %d naraz, "
-        "budżet globalny %.0fs)",
-        MAX_PARALLEL_PANELS,
+        "[zwykly-img] Generuję 7 paneli FLUX sekwencyjnie (budżet globalny %.0fs)",
         PANEL_GLOBAL_BUDGET_SEC,
     )
 
-    with ThreadPoolExecutor(max_workers=MAX_PARALLEL_PANELS) as executor:
-        futures = {executor.submit(_gen_panel, i): i for i in range(1, 8)}
-        for future in as_completed(futures):
-            i = futures[future]
-            try:
-                idx, img, prompt, uvars, caption = future.result()
-                results[idx] = (img, prompt, uvars, caption)
-                if img:
-                    logger.info("[zwykly-img] Panel %d/7 OK", idx)
-                else:
-                    logger.warning(
-                        "[zwykly-img] Panel %d/7 brak obrazka (HF limit, budżet "
-                        "czasowy lub brak zasady)",
-                        idx,
-                    )
-            except Exception as e:
-                logger.error("[zwykly-img] Panel %d/7 błąd: %s", i, e)
-                results[i] = (None, "", [], f"Zasada {i}")
+    for i in range(1, 8):
+        try:
+            idx, img, prompt, uvars, caption = _gen_panel(i)
+            results[idx] = (img, prompt, uvars, caption)
+            if img:
+                logger.info("[zwykly-img] Panel %d/7 OK", idx)
+            else:
+                logger.warning(
+                    "[zwykly-img] Panel %d/7 brak obrazka (HF limit, budżet "
+                    "czasowy lub brak zasady)",
+                    idx,
+                )
+        except Exception as e:
+            logger.error("[zwykly-img] Panel %d/7 błąd: %s", i, e)
+            results[i] = (None, "", [], f"Zasada {i}")
 
     # Złóż w kolejności 1-7
     images, panel_prompts, panel_assignments = [], [], []
