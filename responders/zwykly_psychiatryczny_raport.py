@@ -1806,6 +1806,7 @@ def _generate_flux(
     height: int = 1024,
     test_mode: bool = False,
     token_offset: int = 0,
+    deadline: float | None = None,
 ) -> str | None:
     """Generuje obrazek FLUX — zwraca base64 JPG lub None.
 
@@ -1817,6 +1818,12 @@ def _generate_flux(
     wywołanie kończyło się HTTP 400 "steps must be between 1 and 12",
     niezależnie od tokenu. To była prawdziwa przyczyna niegenerowania się
     zdjęć — nie limity/tokeny, tylko nieprawidłowy parametr żądania.
+
+    Parametr deadline:
+    - Timestamp (time.monotonic()) po którym przerywamy próby kolejnych
+      tokenów HF i lecimy fallbackiem, niezależnie od tego ile tokenów
+      zostało. Chroni przed retry-stormem (w tym seriami 503 przy awarii
+      całego modelu u providera) zjadającym cały czas pipeline'u.
     """
     # Używamy logging.getLogger zamiast current_app.logger,
     # bo ta funkcja może być wywołana z wątku (ThreadPoolExecutor)
@@ -1878,13 +1885,29 @@ def _generate_flux(
     BACKOFF_START = 2.0
     BACKOFF_CAP = 12.0
     MAX_CONSECUTIVE_CAPACITY_429 = 5
+    MAX_CONSECUTIVE_503 = 3  # awaria modelu u providera — nie ma sensu dobijać reszty tokenów
 
     delay = BACKOFF_START
     consecutive_capacity_429 = 0
+    consecutive_503 = 0
 
     for attempt_idx, (name, token) in enumerate(tokens):
+        if deadline is not None and time.monotonic() >= deadline:
+            log.warning(
+                "[psych-flux] %s — globalny budżet czasowy wyczerpany przed "
+                "próbą tokenu %s (%d/%d tokenów sprawdzonych) — przerywam "
+                "wcześniej, używam zastepczy.jpg",
+                label,
+                name,
+                attempt_idx,
+                len(tokens),
+            )
+            break
         if attempt_idx > 0:
-            time.sleep(delay)
+            sleep_for = delay
+            if deadline is not None:
+                sleep_for = max(0.0, min(delay, deadline - time.monotonic()))
+            time.sleep(sleep_for)
             delay = min(delay * 1.6, BACKOFF_CAP)
         try:
             png_bytes = generate_flux_bytes(
@@ -1965,10 +1988,35 @@ def _generate_flux(
                         break
             else:
                 body_snippet = _response_body_snippet(e.response)
-                log.warning(
-                    "[psych-flux] %s HTTP %s token=%s (body: %s)",
-                    label, status, name, body_snippet,
-                )
+                if status == 503:
+                    consecutive_503 += 1
+                    log.warning(
+                        "[psych-flux] %s HTTP 503 token=%s (%d/%d z rzędu, "
+                        "body: %s) — provider zgłasza problem z modelem",
+                        label,
+                        name,
+                        consecutive_503,
+                        MAX_CONSECUTIVE_503,
+                        body_snippet,
+                    )
+                    if consecutive_503 >= MAX_CONSECUTIVE_503:
+                        log.warning(
+                            "[psych-flux] %s — %d kolejnych HTTP 503 — to "
+                            "awaria modelu/providera (health check failed), "
+                            "nie problem konkretnego tokenu. Dobijanie reszty "
+                            "%d tokenów nic nie da — przerywam wcześniej, "
+                            "używam zastepczy.jpg",
+                            label,
+                            consecutive_503,
+                            len(tokens) - attempt_idx - 1,
+                        )
+                        break
+                else:
+                    consecutive_503 = 0
+                    log.warning(
+                        "[psych-flux] %s HTTP %s token=%s (body: %s)",
+                        label, status, name, body_snippet,
+                    )
         except Exception as e:
             log.warning("[psych-flux] %s wyjątek token=%s: %s", label, name, e)
 
@@ -2018,9 +2066,20 @@ def _generate_photos_parallel(
             }
         return sub_dict, sub_dict
 
+    # Globalny budżet czasowy na OBA zdjęcia razem — niezależny od liczby
+    # tokenów. Chroni przed retry-stormem (w tym seriami 503 przy awarii
+    # modelu u providera) zjadającym cały czas pipeline'u i wystawiającym
+    # go na ryzyko SIGTERM (deploy/health-check/OOM) w trakcie.
+    PHOTOS_GLOBAL_BUDGET_SEC = 75.0
+    deadline = time.monotonic() + PHOTOS_GLOBAL_BUDGET_SEC
+
     try:
         b64_pacjent = _generate_flux(
-            prompt_pacjent, "photo_pacjent", test_mode=test_mode, token_offset=0
+            prompt_pacjent,
+            "photo_pacjent",
+            test_mode=test_mode,
+            token_offset=0,
+            deadline=deadline,
         )
         photo_1 = (
             {
@@ -2033,7 +2092,11 @@ def _generate_photos_parallel(
         )
 
         b64_przedmioty = _generate_flux(
-            prompt_przedmioty, "photo_przedmioty", test_mode=test_mode, token_offset=0
+            prompt_przedmioty,
+            "photo_przedmioty",
+            test_mode=test_mode,
+            token_offset=0,
+            deadline=deadline,
         )
         photo_2 = (
             {
