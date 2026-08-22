@@ -28,6 +28,9 @@ psutil>=5.9.0
 # przestał hostować FLUX.1-schnell, generowanie idzie przez Together AI itp.
 huggingface_hub>=0.28.0
 
+# Naprawa niepoprawnego JSON z odpowiedzi LLM (responders/zwykly_psychiatryczny_raport.py)
+json_repair>=0.29.0
+
 # Ankiety PDF
 fpdf2>=2.7.4
 

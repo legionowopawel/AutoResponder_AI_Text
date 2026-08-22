@@ -187,7 +187,7 @@ def _parse_json_safe(raw: str, section: str) -> dict | list | None:
         )
         return extracted
 
-    # Próba 3: naprawa i retry
+    # Próba 3: naprawa i retry (własna heurystyka — domykanie nawiasów/cudzysłowów)
     repaired = _repair_truncated_json(clean)
     try:
         result = json.loads(repaired)
@@ -197,6 +197,33 @@ def _parse_json_safe(raw: str, section: str) -> dict | list | None:
         return result
     except Exception:
         pass
+
+    # Próba 3b: json_repair — biblioteka wyspecjalizowana w naprawie JSON-a
+    # z LLM-ów (niedomknięte stringi, brakujące przecinki/nawiasy, itp.).
+    # Łapie przypadki typu "Unterminated string starting at: line 11 column 28",
+    # które _repair_truncated_json (naiwne liczenie nawiasów) czasem gubi,
+    # bo błąd bywa W ŚRODKU stringa, nie tylko na jego końcu.
+    try:
+        from json_repair import repair_json
+
+        repaired_lib = repair_json(clean)
+        if repaired_lib:
+            result = json.loads(repaired_lib)
+            if result not in (None, {}, []):
+                current_app.logger.warning(
+                    "[psych-raport] JSON naprawiony sekcja=%s (json_repair)", section
+                )
+                return result
+    except ImportError:
+        current_app.logger.warning(
+            "[psych-raport] json_repair niedostępny (brak w requirements.txt?) "
+            "— pomijam tę próbę naprawy dla sekcja=%s",
+            section,
+        )
+    except Exception as e:
+        current_app.logger.warning(
+            "[psych-raport] json_repair nie poradził sobie sekcja=%s: %s", section, e
+        )
 
     # Próba 4: ast.literal_eval — radzi sobie z niektórymi wariantami złego JSON
     try:
@@ -524,10 +551,27 @@ def _sekcja_pacjent(cfg: dict, body: str, sender_name: str, nadawca_block: str =
 
         result = _parse_json_safe(raw, "dane_pacjenta")
         if isinstance(result, dict) and result.get("__error__"):
+            # BUGFIX (2026-08-22): wcześniej ten warunek robił natychmiastowy
+            # return, co oznaczało, że gdy GŁÓWNE zapytanie 1a (dane_pacjenta)
+            # zwróciło niesparsowalny JSON, sekcja pacjent kończyła się błędem
+            # w całości — awaryjne, NIEZALEŻNE wywołania 1b (powod_przyjecia,
+            # Dział II) i 1c (cytaty_z_przyjecia, Dział III) niżej w tej
+            # funkcji nigdy nie były uruchamiane, mimo że nie zależą od
+            # sukcesu 1a. Efekt: jeden zepsuty JSON w Dziale I kasował też
+            # Działy II i III, które AI mogło wygenerować bezproblemowo.
+            # Naprawa: zamiast przerywać, kontynuujemy z pustym `result`
+            # (zachowując informację o błędzie do logów/statusu), żeby 1b/1c
+            # miały szansę uzupełnić to, co się da. Cała sekcja nadal
+            # wraca ze statusem "fallback" (nie "ok"), żeby było widać że
+            # dane_pacjenta (imię, wiek, adres...) faktycznie się nie udały.
             current_app.logger.warning(
-                "[psych-raport] Sekcja pacjent: JSON nienaprawialny"
+                "[psych-raport] Sekcja pacjent: JSON dane_pacjenta (Dział I) "
+                "nienaprawialny — kontynuuję z 1b/1c, żeby odzyskać Działy II/III"
             )
-            return _section_result(result, "error")
+            _dane_pacjenta_blad = result
+            result = {}
+        else:
+            _dane_pacjenta_blad = None
 
         if isinstance(result, dict) and result.get("__raw_text__"):
             current_app.logger.warning(
@@ -767,6 +811,15 @@ def _sekcja_pacjent(cfg: dict, body: str, sender_name: str, nadawca_block: str =
         status = "ok"
         if isinstance(result, dict) and result.get("__raw_text__"):
             status = "fallback"
+        if _dane_pacjenta_blad is not None:
+            # Dział I (dane_pacjenta) się nie udał, ale 1b/1c mogły uzupełnić
+            # Działy II/III do `result` powyżej — zachowujemy oba sygnały:
+            # status "fallback" (żeby dalsza część pipeline'u wiedziała, że
+            # podstawowe dane pacjenta mogą brakować) + oryginalny błąd
+            # do diagnostyki, bez utraty tego co 1b/1c zdążyły uzupełnić.
+            status = "fallback"
+            if isinstance(result, dict):
+                result["__dane_pacjenta_1a_blad__"] = _dane_pacjenta_blad
         current_app.logger.info("[psych-raport] Sekcja pacjent %s", status)
         if isinstance(result, dict):
             return _section_result(result, status)
@@ -1460,6 +1513,24 @@ def _sekcja_flux_prompty(
         schema = flux_cfg.get("schema", {})
         instrukcje = flux_cfg.get("instrukcje", "")
 
+        # ── Style wizualne: STAŁE, niezmienne przypisanie (nie losowane przy
+        # każdym wywołaniu). Źródło: prompts/zwykly_raport.json →
+        # "style_wizualne_flux" → "styl_pacjent" / "styl_przedmioty". Te dwie
+        # wartości zostały wylosowane RAZ, jednorazowo, przy konfiguracji —
+        # od tego momentu każdy wygenerowany raport używa dokładnie tych
+        # samych stylów, żeby wygląd był spójny/przewidywalny. Żeby zmienić
+        # styl na stałe: edytuj te dwa pola bezpośrednio w JSON-ie (kod nic
+        # więcej nie musi wiedzieć). Klucz "lista" w configu to tylko bank
+        # gotowych propozycji do ręcznego wyboru — nie jest już używany do
+        # losowania w runtime.
+        _style_cfg = cfg.get("style_wizualne_flux", {}) or {}
+        styl_pacjent = _style_cfg.get("styl_pacjent") or (
+            "black and white pencil sketch, loose expressive linework"
+        )
+        styl_przedmioty = _style_cfg.get("styl_przedmioty") or (
+            "black and white pencil sketch, loose expressive linework"
+        )
+
         nouns_str = (
             ", ".join(list(nouns_dict.values())[:8])
             if nouns_dict
@@ -1469,6 +1540,9 @@ def _sekcja_flux_prompty(
             f"{nadawca_block}"
             f"EMAIL PACJENTA:\n{body[:MAX_DLUGOSC_EMAIL]}\n\n"
             f"RZECZOWNIKI Z EMAILA:\n{nouns_str}\n\n"
+            f"STYL WIZUALNY (DO WKOMPONOWANIA):\n"
+            f"- prompt_pacjent: {styl_pacjent}\n"
+            f"- prompt_przedmioty: {styl_przedmioty}\n\n"
             f"INSTRUKCJE:\n{instrukcje}\n\n"
             f"SCHEMAT JSON:\n{json.dumps(schema, ensure_ascii=False, indent=2)}"
         )
@@ -1502,8 +1576,20 @@ def _sekcja_flux_prompty(
                         "[psych-raport] flux: znormalizowano '%s' → '%s'", wrong, right
                     )
 
-        current_app.logger.info("[psych-raport] Sekcja flux OK")
-        return result if isinstance(result, dict) else {"prompt_pacjent": str(result)}
+        if not isinstance(result, dict):
+            result = {"prompt_pacjent": str(result)}
+
+        # Osobne pola stylu (niezależne od treści promptu wygenerowanej przez
+        # AI) — widoczne wprost w raporcie/JSON, do ew. ręcznej podmiany bez
+        # ponownego odpytywania AI: wystarczy podmienić te dwie wartości.
+        result["styl_pacjent"] = styl_pacjent
+        result["styl_przedmioty"] = styl_przedmioty
+
+        current_app.logger.info(
+            "[psych-raport] Sekcja flux OK (styl_pacjent=%r, styl_przedmioty=%r)",
+            styl_pacjent, styl_przedmioty,
+        )
+        return result
 
     except Exception as e:
         current_app.logger.error("[psych-raport] Błąd sekcji flux: %s", e)
@@ -1740,9 +1826,16 @@ def _sekcja_relacje_swiadkow(cfg: dict, body: str, raport: dict, nadawca_block: 
 
 def _hf_credit_exhausted(resp) -> bool:
     """Sprawdza czy odpowiedź 402 wskazuje na globalne wyczerpanie kredytów."""
+    # BUGFIX (2026-08-22): brakowało tu guardu `resp is None`, jaki mają
+    # analogiczne funkcje niżej (_response_body_snippet, _quota_permanently_
+    # exhausted). Aktualne wywołanie jest osłonięte przez "e.response is not
+    # None and ..." u wołającego, ale ta funkcja bywa łatwa do wywołania
+    # samodzielnie gdzie indziej — guard tutaj też, na wszelki wypadek.
+    if resp is None:
+        return False
     try:
         data = resp.json()
-        return data.get("error", "").find("exhausted") != -1
+        return str(data.get("error", "")).find("exhausted") != -1
     except Exception:
         return False
 

@@ -186,6 +186,29 @@ def generate_flux_bytes(
             buf = io.BytesIO()
             image.save(buf, format="PNG")
             return buf.getvalue()
+        except AttributeError as exc:
+            # BUGFIX (2026-08-22): obserwowane w logach jako
+            # "'NoneType' object has no attribute 'headers'". Dzieje się
+            # WEWNĄTRZ huggingface_hub/InferenceClient, gdy request do
+            # providera pada na poziomie połączenia (np. reset, timeout,
+            # DNS) i biblioteka próbuje odczytać nagłówki z odpowiedzi,
+            # która nigdy nie nadeszła (response=None). To nie jest
+            # HfHubHTTPError (nie ma sensownego kodu statusu) — normalizujemy
+            # to do HfHubHTTPError z response=None, żeby dalsze warstwy
+            # (zwykly_psychiatryczny_raport._generate_flux) traktowały to
+            # tak samo jak każdy inny "response=None" przypadek zamiast
+            # dostawać gołego AttributeError o mylącej treści.
+            last_error = HfHubHTTPError(
+                f"Provider '{candidate}' zwrócił odpowiedź bez nagłówków "
+                f"(prawdopodobny zrywany request na poziomie sieci): {exc}",
+                response=None,
+            )
+            logger.warning(
+                "[FLUX] Provider '%s' — request padł na poziomie połączenia "
+                "(brak response, oryginalnie AttributeError: %s). Przełączam na następny...",
+                candidate,
+                exc,
+            )
         except Exception as exc:
             last_error = exc
             logger.warning(
