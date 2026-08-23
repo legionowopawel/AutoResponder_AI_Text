@@ -2341,31 +2341,53 @@ def _generate_triptych_prompts_batch(
     """
     w = _load_panel_wytyczne()
     nouns_str = session_vars.get("USER_OBJECTS", "") or "debris, broken furniture, ash"
-    panel_style = random.choice(
-        w.get("style_variants", ["35mm film grain, Fight Club 1999"])
+    style_variants = w.get(
+        "style_variants",
+        ["pencil sketch", "watercolor illustration", "ink line drawing"],
     )
+    # BUGFIX/ZMIANA (2026-08-23): wcześniej jeden `panel_style` był losowany
+    # RAZ dla całej partii i współdzielony przez wszystkich 7 paneli —
+    # wszystkie obrazki wychodziły w tym samym stylu. Teraz każdy panel
+    # dostaje SWÓJ WŁASNY styl z listy (cyklicznie, jeśli stylów jest mniej
+    # niż 7), więc 7 obrazków wygląda jak 7 różnych technik rysunkowych,
+    # nie jak warianty jednego stylu.
+    panel_styles = [style_variants[i % len(style_variants)] for i in range(7)]
 
-    # Buduj listę zasad do promptu zbiorczego
+    # Buduj listę zasad do promptu zbiorczego — każda linia niesie też
+    # przypisany do NIEJ styl, żeby model nie mieszał stylów między panelami.
     zasady_lines = []
     for i, rule in enumerate(panel_rules[:7], 1):
-        zasady_lines.append(f"Panel {i}: {rule[:120] if rule else '(brak zasady)'}")
+        zasady_lines.append(
+            f"Panel {i} (illustration style for THIS panel only: {panel_styles[i - 1]}): "
+            f"{rule[:120] if rule else '(brak zasady)'}"
+        )
     zasady_str = "\n".join(zasady_lines)
 
     system_batch = (
-        "You are a cinematic visual prompt engineer for FLUX image generation. "
-        "Fight Club 1999 aesthetic, David Fincher style. "
-        "Given 7 Tyler Durden RULES, generate 7 FLUX image prompts, one per rule. "
+        "You are a visual prompt engineer for FLUX image generation, creating "
+        "illustrations for a whimsical, PG fairy-tale storybook retelling of "
+        "Little Red Riding Hood ('Czerwony Kapturek'). "
+        "Characters available: Red Riding Hood (girl in a red hooded cloak), "
+        "the Wolf (storybook wolf character), Grandmother, and the Woodsman. "
+        "Given 7 RULES, generate 7 FLUX image prompts, one per rule, each showing "
+        "the characters doing something silly/absurd that illustrates the rule in "
+        "a lighthearted, non-violent, non-graphic, storybook way. "
         "Each prompt: ONE paragraph, max 80 words, English only. "
-        "Show the VIOLATION of each rule — characters actively doing what the rule forbids. "
-        "Characters look damaged, unwashed, nihilistic. "
-        f"Visual style: {panel_style}, 35mm film grain, gritty, underexposed. "
+        "STRICT REQUIREMENT: every prompt must explicitly state its illustration "
+        "medium/style using the exact style given for that panel below — e.g. "
+        "'pencil sketch illustration', 'watercolor painting', 'ink line drawing'. "
+        "ABSOLUTE PROHIBITIONS: no photorealism, no '35mm', no film grain, no "
+        "photographic or documentary style, no named real people or actors, no "
+        "nudity, no gore, no blood, no injury, no weapons used on a person. "
+        "This is a children's picture-book illustration, not a photograph. "
         'RESPOND ONLY with valid JSON: {"prompts": ["prompt1", "prompt2", ..., "prompt7"]} '
         "No other text, no markdown fences."
     )
     user_batch = (
-        f"Objects from sender's email context: {nouns_str}\n\n"
-        f"7 Tyler Durden Rules:\n{zasady_str}\n\n"
-        "Generate exactly 7 FLUX prompts as JSON array under key 'prompts'."
+        f"Objects from sender's email context (use loosely as harmless props): {nouns_str}\n\n"
+        f"7 rules, each with its required illustration style:\n{zasady_str}\n\n"
+        "Generate exactly 7 FLUX prompts as JSON array under key 'prompts'. "
+        "Remember: each panel's prompt must match ONLY its own assigned style."
     )
 
     raw, prov = _call_ai_with_fallback(system_batch, user_batch, max_tokens=2000)
@@ -2529,18 +2551,47 @@ def _generate_triptych(
     # równoległych requestów do HF.
     PANEL_GLOBAL_BUDGET_SEC = 75.0  # twardy limit na wszystkie 7 paneli łącznie
 
-    deadline = time.monotonic() + PANEL_GLOBAL_BUDGET_SEC
+    _w_fallback_styles = _load_panel_wytyczne().get(
+        "style_variants", ["pencil sketch", "watercolor illustration", "ink line drawing"]
+    )
 
-    def _gen_panel(panel_idx):
+    def panel_style_for_idx(panel_idx: int) -> str:
+        """Ten sam schemat przypisania stylu co w _generate_triptych_prompts_batch,
+        żeby manualny fallback (gdy AI nie zwróci promptu) też dostał inny,
+        nierealistyczny styl per panel zamiast jednego sztywnego stylu."""
+        return _w_fallback_styles[(panel_idx - 1) % len(_w_fallback_styles)]
+
+    # BUGFIX (2026-08-23): jeden wspólny `deadline` liczony RAZ na starcie
+    # dla wszystkich 7 paneli powodował, że wczesne panele (1-4) — próbując
+    # po kolei tokeny z rosnącym backoffem — potrafiły zjeść cały budżet,
+    # zanim pętla w ogóle dotarła do panelu 5/6/7. W logu widać to jako
+    # "0/26 tokenów sprawdzonych" dla późnych paneli: deadline był już po
+    # czasie zanim panel zdążył spróbować pierwszego tokenu. Które konkretnie
+    # panele "zdążą" zależało wyłącznie od tego, ile 429/402 trafiło się
+    # wcześniej — stąd niedeterministyczny wzorzec między przebiegami.
+    #
+    # Naprawa: minimalny gwarantowany budżet PER PANEL, liczony na nowo
+    # przed każdym panelem jako pozostały czas / pozostałe panele — więc
+    # nawet jeśli wcześniejsze panele zużyją więcej niż "sprawiedliwy"
+    # udział, każdy kolejny panel i tak dostaje przynajmniej PANEL_MIN_BUDGET_SEC
+    # (starcza na próbę min. 1-2 tokenów) zamiast zera.
+    global_deadline = time.monotonic() + PANEL_GLOBAL_BUDGET_SEC
+    PANEL_MIN_BUDGET_SEC = 8.0
+
+    def _gen_panel(panel_idx, panel_deadline):
         rule_text = panel_rules[panel_idx - 1]
         flux_prompt = flux_prompts[panel_idx - 1]
 
         if not flux_prompt and rule_text:
             # Prosty fallback bez AI — składamy ręcznie
             nouns_str = session_vars.get("USER_OBJECTS", "debris, ash")
+            fallback_style = panel_style_for_idx(panel_idx)
             flux_prompt = (
-                f"Fight Club 1999, Tyler Durden violating the rule: '{rule_text[:80]}', "
-                f"surrounded by {nouns_str}, 35mm film grain, gritty, underexposed, Fincher"
+                f"{fallback_style} illustration, storybook picture-book scene: "
+                f"Little Red Riding Hood and the Wolf, illustrating the rule "
+                f"'{rule_text[:80]}' in a whimsical, non-violent way, "
+                f"surrounded by {nouns_str}, no photorealism, no film grain, "
+                f"non-graphic, PG, children's book art"
             )
 
         caption = rule_text[:120] if rule_text else f"Zasada {panel_idx}"
@@ -2549,7 +2600,7 @@ def _generate_triptych(
                 flux_prompt,
                 panel_index=panel_idx,
                 test_mode=test_mode,
-                deadline=deadline,
+                deadline=panel_deadline,
             )
             if flux_prompt
             else None
@@ -2561,13 +2612,30 @@ def _generate_triptych(
 
     results = {}
     logger.info(
-        "[zwykly-img] Generuję 7 paneli FLUX sekwencyjnie (budżet globalny %.0fs)",
+        "[zwykly-img] Generuję 7 paneli FLUX sekwencyjnie (budżet globalny %.0fs, "
+        "min. %.0fs/panel)",
         PANEL_GLOBAL_BUDGET_SEC,
+        PANEL_MIN_BUDGET_SEC,
     )
 
     for i in range(1, 8):
+        panels_left = 8 - i  # łącznie z bieżącym
+        remaining = global_deadline - time.monotonic()
+        fair_share = remaining / panels_left if panels_left > 0 else remaining
+        # Każdy panel dostaje przynajmniej PANEL_MIN_BUDGET_SEC, nawet jeśli
+        # oznacza to lekkie przekroczenie oryginalnego budżetu globalnego —
+        # lepiej wygenerować panel z opóźnieniem niż zawsze fallback.
+        panel_budget = max(fair_share, PANEL_MIN_BUDGET_SEC)
+        panel_deadline = time.monotonic() + panel_budget
+        logger.info(
+            "[zwykly-img] Panel %d/7 — budżet %.1fs (pozostało %.1fs / %d paneli)",
+            i,
+            panel_budget,
+            max(remaining, 0.0),
+            panels_left,
+        )
         try:
-            idx, img, prompt, uvars, caption = _gen_panel(i)
+            idx, img, prompt, uvars, caption = _gen_panel(i, panel_deadline)
             results[idx] = (img, prompt, uvars, caption)
             if img:
                 logger.info("[zwykly-img] Panel %d/7 OK", idx)

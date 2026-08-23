@@ -1,0 +1,44 @@
+{
+  "style_wizualne_flux": {
+    "styl_cv": {
+      "opis": "professional CV headshot portrait, sharp focus, studio lighting",
+      "plec_wstrzykiwana": true,
+      "uwaga": "plec wykrytego nadawcy musi byc wstrzykiwana do promptu FLUX (patrz photo_prompt, ok. linii 3240-3264) - nie hardcodowac"
+    },
+    "styl_paneli": {
+      "opis": "watercolor storybook illustration, soft ink outlines, fairy-tale picture book style, non-photorealistic, hand-drawn, NOT photorealistic, NOT 35mm film grain, NOT documentary style",
+      "negatywny_prompt": "photorealistic, hyperrealistic, 35mm film grain, documentary photography, realistic skin texture, real actor likeness",
+      "losowanie": false,
+      "uwaga": "styl jest stały i edytowalny w tym polu, czytany wprost przy kazdym wywolaniu - bez losowania miedzy przebiegami"
+    }
+  },
+  "postacie_paneli": {
+    "postac_glowna": {
+      "nazwa_wewnetrzna": "czerwony_kapturek",
+      "opis_wizualny": "young girl in a red hooded cloak, storybook fairy-tale character, fictional, non-realistic illustration style",
+      "uwaga": "postac fikcyjna, baśniowa - NIE realny nazwany aktor/aktorka"
+    },
+    "postac_drugoplanowa": {
+      "nazwa_wewnetrzna": "wilk",
+      "opis_wizualny": "storybook wolf character, fairy-tale illustration style, fictional, non-realistic",
+      "uwaga": "postac fikcyjna, baśniowa - NIE realny nazwany aktor"
+    },
+    "postac_pomocnicza": {
+      "nazwa_wewnetrzna": "babcia",
+      "opis_wizualny": "elderly grandmother storybook character, fairy-tale illustration style, fictional, non-realistic"
+    },
+    "postac_epizodyczna": {
+      "nazwa_wewnetrzna": "mysliwy",
+      "opis_wizualny": "storybook woodsman/hunter character, fairy-tale illustration style, fictional, non-realistic"
+    }
+  },
+  "panele": {
+    "panel_1": { "postacie": ["czerwony_kapturek"], "styl": "styl_paneli" },
+    "panel_2": { "postacie": ["czerwony_kapturek", "wilk"], "styl": "styl_paneli" },
+    "panel_3": { "postacie": ["wilk", "babcia"], "styl": "styl_paneli" },
+    "panel_4": { "postacie": ["czerwony_kapturek", "babcia"], "styl": "styl_paneli" },
+    "panel_5": { "postacie": ["wilk"], "styl": "styl_paneli" },
+    "panel_6": { "postacie": ["mysliwy", "wilk"], "styl": "styl_paneli" },
+    "panel_7": { "postacie": ["czerwony_kapturek", "babcia", "mysliwy"], "styl": "styl_paneli" }
+  }
+}

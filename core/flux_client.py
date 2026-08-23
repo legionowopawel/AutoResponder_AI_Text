@@ -52,6 +52,41 @@ _ACTIVE_PROVIDER_CACHE: dict[str, tuple[str, float]] = {}
 _ACTIVE_PROVIDER_LOCK = threading.Lock()
 
 
+class _NullResponse:
+    """
+    BUGFIX (2026-08-23): zaślepka podstawiana zamiast response=None.
+
+    huggingface_hub.errors.HfHubHTTPError.__init__ bezwarunkowo robi
+    `response.headers.get(...)` i `response.request`. Wywołanie
+    `HfHubHTTPError(msg, response=None)` samo rzuca więc
+    `AttributeError: 'NoneType' object has no attribute 'headers'`
+    w trakcie KONSTRUOWANIA wyjątku — co tłumaczy, dlaczego ten
+    surowy komunikat nadal pojawiał się w logach mimo wcześniejszej
+    "poprawki": ta poprawka properly nie mogła zadziałać, bo sama
+    wywoływała ten sam błąd przy próbie zgłoszenia go dalej.
+
+    Ta klasa udaje minimalny obiekt response z pustym `headers` i
+    `request=None`, żeby konstruktor HfHubHTTPError przeszedł bez
+    wyjątku. `status_code` i `text` też ustawione na bezpieczne
+    wartości domyślne, bo część kodu wyżej w stosie (responderzy)
+    może je odczytywać przy obsłudze błędu.
+    """
+
+    headers: dict = {}
+    request = None
+    status_code = None
+    text = ""
+
+    def json(self):
+        return {}
+
+
+def _safe_hf_hub_http_error(message: str) -> HfHubHTTPError:
+    """Buduje HfHubHTTPError dla przypadku 'brak odpowiedzi z sieci' bez
+    ryzyka wtórnego AttributeError przy samym konstruowaniu wyjątku."""
+    return HfHubHTTPError(message, response=_NullResponse())
+
+
 def _get_provider_candidates(explicit_provider: str | None = None) -> list[str]:
     """Zwraca kolejność providerów do testowania."""
     if explicit_provider and explicit_provider != "auto":
@@ -147,10 +182,7 @@ def generate_flux_bytes(
 
     selected_provider = provider or get_working_provider(token, HF_MODEL_FLUX)
     if not selected_provider:
-        raise HfHubHTTPError(
-            "No working HF image provider available",
-            response=None,
-        )
+        raise _safe_hf_hub_http_error("No working HF image provider available")
 
     logger.info(
         "[FLUX] Rozpoczynam generowanie właściwego obrazka przy użyciu providera '%s' i tokenu %s...",
@@ -198,10 +230,9 @@ def generate_flux_bytes(
             # (zwykly_psychiatryczny_raport._generate_flux) traktowały to
             # tak samo jak każdy inny "response=None" przypadek zamiast
             # dostawać gołego AttributeError o mylącej treści.
-            last_error = HfHubHTTPError(
+            last_error = _safe_hf_hub_http_error(
                 f"Provider '{candidate}' zwrócił odpowiedź bez nagłówków "
-                f"(prawdopodobny zrywany request na poziomie sieci): {exc}",
-                response=None,
+                f"(prawdopodobny zrywany request na poziomie sieci): {exc}"
             )
             logger.warning(
                 "[FLUX] Provider '%s' — request padł na poziomie połączenia "
@@ -219,4 +250,4 @@ def generate_flux_bytes(
 
     if last_error is not None:
         raise last_error
-    raise HfHubHTTPError("No FLUX generation provider succeeded", response=None)
+    raise _safe_hf_hub_http_error("No FLUX generation provider succeeded")
