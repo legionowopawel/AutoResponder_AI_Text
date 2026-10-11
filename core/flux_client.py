@@ -87,6 +87,25 @@ def _safe_hf_hub_http_error(message: str) -> HfHubHTTPError:
     return HfHubHTTPError(message, response=_NullResponse())
 
 
+class _StatusResponse(_NullResponse):
+    """Zaślepka response z konkretnym kodem HTTP (np. 402), żeby respondery
+    mogły rozpoznać martwy token (mark_dead) zamiast widzieć 'HTTP None'."""
+
+    def __init__(self, status_code: int):
+        self.status_code = status_code
+        self.headers = {}
+
+
+# Ostatni krytyczny status (401/402/403) zaobserwowany dla tokenu w health-checku.
+_TOKEN_FATAL_STATUS: dict[str, int] = {}
+
+
+def _exc_status(exc: Exception) -> int | None:
+    resp = getattr(exc, "response", None)
+    code = getattr(resp, "status_code", None)
+    return code if isinstance(code, int) else None
+
+
 def _get_provider_candidates(explicit_provider: str | None = None) -> list[str]:
     """Zwraca kolejność providerów do testowania."""
     if explicit_provider and explicit_provider != "auto":
@@ -121,6 +140,7 @@ def get_working_provider(token: str, model_name: str = HF_MODEL_FLUX) -> str | N
             )
             return cached_provider
 
+    _TOKEN_FATAL_STATUS.pop(token, None)
     for provider in candidates:
         logger.info("[FLUX] Sprawdzam dostępność providera: '%s'...", provider)
         try:
@@ -151,6 +171,18 @@ def get_working_provider(token: str, model_name: str = HF_MODEL_FLUX) -> str | N
                 provider,
                 _summarize_error(exc),
             )
+            status = _exc_status(exc)
+            if status in (401, 402, 403):
+                # Kredyty/token są per konto HF — pozostali providerzy
+                # zwrócą to samo. Nie tracimy czasu, przechodzimy do
+                # następnego tokenu.
+                _TOKEN_FATAL_STATUS[token] = status
+                logger.warning(
+                    "[FLUX] HTTP %s dla tokenu %s — pomijam resztę providerów.",
+                    status,
+                    token[:6],
+                )
+                return None
 
     logger.error(
         "[FLUX] Żaden z listowanych providerów nie odpowiada dla modelu '%s'!",
@@ -182,6 +214,11 @@ def generate_flux_bytes(
 
     selected_provider = provider or get_working_provider(token, HF_MODEL_FLUX)
     if not selected_provider:
+        fatal = _TOKEN_FATAL_STATUS.get(token)
+        if fatal:
+            raise HfHubHTTPError(
+                f"HF token rejected (HTTP {fatal})", response=_StatusResponse(fatal)
+            )
         raise _safe_hf_hub_http_error("No working HF image provider available")
 
     logger.info(

@@ -1,0 +1,3 @@
+Powrót do działającej wersji bez obrazków, gdyby było potrzebne:
+
+git checkout backup-bez-obrazkow-2026-10-11 -- core/flux_client.py responders/zwykly_psychiatryczny_raport.py

@@ -1984,6 +1984,7 @@ def _generate_flux(
     consecutive_capacity_429 = 0
     consecutive_503 = 0
 
+    skip_sleep = False
     for attempt_idx, (name, token) in enumerate(tokens):
         if deadline is not None and time.monotonic() >= deadline:
             log.warning(
@@ -1996,12 +1997,13 @@ def _generate_flux(
                 len(tokens),
             )
             break
-        if attempt_idx > 0:
+        if attempt_idx > 0 and not skip_sleep:
             sleep_for = delay
             if deadline is not None:
                 sleep_for = max(0.0, min(delay, deadline - time.monotonic()))
             time.sleep(sleep_for)
             delay = min(delay * 1.6, BACKOFF_CAP)
+        skip_sleep = False
         try:
             png_bytes = generate_flux_bytes(
                 prompt, token, seed=random.randint(0, 2**32 - 1),
@@ -2023,6 +2025,8 @@ def _generate_flux(
                 return base64.b64encode(png_bytes).decode("ascii")
         except HfHubHTTPError as e:
             status = e.response.status_code if e.response is not None else None
+            if status in (401, 402, 403):
+                skip_sleep = True  # martwy token — kolejny bez czekania
             if status == 402:
                 mark_dead(name)
                 log.warning(
