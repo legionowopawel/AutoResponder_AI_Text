@@ -10,11 +10,15 @@ i zwykly_psychiatryczny_raport.py.
     POST https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/run/
          @cf/black-forest-labs/flux-1-schnell
     Authorization: Bearer {CF_API_TOKEN}
-    {"prompt": "...", "steps": 5, "seed": 123}
+    {"prompt": "...", "steps": 5}
 
   Odpowiedź: JSON, obraz w result.image jako base64 (JPEG).
 
 RÓŻNICE WZGLĘDEM HF (obsłużone TUTAJ, respondery bez zmian):
+  • seed NIE jest wysyłany — REST API odrzuca go błędem 400 (kod 5006,
+    "Additional or unevaluated properties '/seed' not allowed"), mimo że
+    przykład w dokumentacji go zawiera. Bez seeda model losuje sam, więc
+    każdy obraz i tak jest inny. Parametr `seed` w sygnaturze jest ignorowany.
   • prompt max 2048 znaków → dłuższy jest przycinany (na granicy słowa)
   • steps max 8 → przycinane do 1..8
   • guidance_scale NIE istnieje → parametr `guidance` jest ignorowany
@@ -198,7 +202,7 @@ def _to_png_bytes(raw: bytes, width: int | None, height: int | None) -> bytes:
 def generate_flux_bytes(
     prompt: str,
     token: str,
-    seed: int | None = None,
+    seed: int | None = None,  # ignorowane — Cloudflare REST odrzuca seed (400/5006)
     steps: int = 5,
     guidance: float = 2.0,  # ignorowane — Cloudflare flux-1-schnell nie ma guidance
     width: int | None = None,
@@ -221,15 +225,13 @@ def generate_flux_bytes(
         "prompt": _truncate_prompt(prompt),
         "steps": max(1, min(int(steps or 4), CF_MAX_STEPS)),
     }
-    if seed is not None:
-        payload["seed"] = int(seed) & 0x7FFFFFFF
+    # `seed` celowo NIE trafia do payloadu (patrz opis modułu) — 400 / kod 5006.
 
     url = f"{CF_API_BASE}/accounts/{account_id}/ai/run/{CF_MODEL_FLUX}"
     logger.info(
-        "[FLUX] Cloudflare %s steps=%s seed=%s (konto %s…)",
+        "[FLUX] Cloudflare %s steps=%s (konto %s…)",
         CF_MODEL_FLUX,
         payload["steps"],
-        payload.get("seed"),
         account_id[:6],
     )
 
