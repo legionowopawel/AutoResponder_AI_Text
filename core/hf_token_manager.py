@@ -1,21 +1,36 @@
 """
 core/hf_token_manager.py
 ════════════════════════════════════════════════════════════════════════════════
-Centralny menedżer tokenów Hugging Face — współdzielony przez WSZYSTKIE
+Centralny menedżer tokenów CLOUDFLARE Workers AI — współdzielony przez WSZYSTKIE
 respondery (zwykly, smierc, dociekliwy, …).
+
+NAZWA PLIKU I API ZOSTAJĄ "hf_*" CELOWO (hf_tokens, get_active_tokens,
+mark_dead, is_dead) — dzięki temu respondery i app.py nie wymagają zmian.
+Wcześniej trzymał tokeny Hugging Face; od 2026-11 trzyma tokeny Cloudflare.
+
+ZMIENNE ŚRODOWISKOWE (Render → Environment):
+  CF_ACCOUNT_ID    Account ID Cloudflare (32 znaki hex) — wspólny dla tokenów
+  CF_API_TOKEN     token API z uprawnieniami Workers AI (Read + Edit)
+  CF_API_TOKEN1…   kolejne tokeny (do CF_API_TOKEN99)
+  CF_ACCOUNT_ID1…  OPCJONALNIE: Account ID dla tokenu o tym samym numerze,
+                   gdy należy do innego konta Cloudflare niż CF_ACCOUNT_ID
+
+  Uwaga: limit darmowy (10 000 neuronów/dzień) jest per KONTO, nie per token.
+
+WARTOŚĆ TOKENU zwracana przez get_active_tokens() to "ACCOUNT_ID:TOKEN"
+(pack_cf_credential / unpack_cf_credential) — dzięki temu generate_flux_bytes()
+dostaje komplet danych w jednym stringu, a sygnatury responderów się nie zmieniają.
 
 ZASADY:
   1. Stan tokenów (aktywne / martwe) jest JEDEN dla całego procesu serwera.
-  2. Walidacja tokenu odbywa się przez lekki GET na whoami HF API.
+  2. Walidacja tokenu przez lekki GET .../tokens/verify (nie zużywa neuronów).
   3. Warm-up jednorazowy przy pierwszym użyciu (lazy).
   4. Tokeny oznaczane jako martwe przez mark_dead(name) podczas sesji.
   5. Reset ręczny przez /admin/hf-reset.
 
-KLUCZOWE OPTYMALIZACJE (vs poprzednia wersja):
+KLUCZOWE OPTYMALIZACJE:
   - Gdy ALL_DEAD_CACHE=True → get_active_tokens() zwraca [] natychmiast,
     zero requestów HTTP. Kasuje cache po RECHECK_AFTER sekundach.
-  - warm-up NIE jest blokujący dla wątku pipeline — odpala się w tle
-    i zwraca [] dopóki nie skończy (fail-fast).
   - warmup() uruchamia się MAX RAZ co MIN_WARMUP_INTERVAL sekund
     — chroni przed pętlą restart→warmup→OOM.
   - Liczba równoległych wątków warm-upu ograniczona do MAX_WARMUP_THREADS.
@@ -23,8 +38,8 @@ KLUCZOWE OPTYMALIZACJE (vs poprzednia wersja):
 UŻYCIE:
     from core.hf_token_manager import hf_tokens, mark_dead, get_active_tokens
 
-    tokens = get_active_tokens()          # [(name, value), ...]
-    mark_dead("HF_TOKEN3")                # po błędzie 401/402/403
+    tokens = get_active_tokens()          # [(name, "ACCOUNT_ID:TOKEN"), ...]
+    mark_dead("CF_API_TOKEN")             # po błędzie 401/402/403
 ════════════════════════════════════════════════════════════════════════════════
 """
 
@@ -47,22 +62,37 @@ logger = logging.getLogger(__name__)
 
 # ─── Stałe konfiguracyjne ──────────────────────────────────────────────────────
 
-_HF_WHOAMI_URL = "https://huggingface.co/api/whoami"
-# Lekki endpoint do walidacji tokenu — nie wymaga uprawnień konta,
-# wystarczy że token jest poprawnie sformatowany i zarejestrowany w HF.
-# /api/whoami-v2 jest bardziej permisywny niż /api/whoami dla tokenów
-# z ograniczonym scope (np. inference-only).
-_HF_CHECK_URL = "https://huggingface.co/api/whoami-v2"
+_CF_API = "https://api.cloudflare.com/client/v4"
+# Weryfikacja tokenu (nie zużywa neuronów):
+#   - tokeny użytkownika: GET /user/tokens/verify
+#   - tokeny konta (Account API Tokens): GET /accounts/{id}/tokens/verify
+# Próbujemy oba — token jest MARTWY dopiero gdy OBA zwrócą 401/403.
 _CHECK_TIMEOUT = 6  # timeout pojedynczego sprawdzenia tokenu (s)
-_TOKEN_RANGE = 100  # skanuj HF_TOKEN, HF_TOKEN1 … HF_TOKEN99
+_TOKEN_RANGE = 100  # skanuj CF_API_TOKEN, CF_API_TOKEN1 … CF_API_TOKEN99
 _MAX_WARMUP_THREADS = 8  # max równoległych wątków podczas warm-upu
 
 # Po tym czasie od warm-upu z wynikiem ALL_DEAD — spróbuj ponownie
 # 0 = nigdy nie próbuj ponownie (tokeny 401 są trwale martwe)
-_RECHECK_AFTER = 300  # po 5 min sprawdź ponownie (obsługuje dodanie nowego tokenu)
+_RECHECK_AFTER = 300  # po 5 min sprawdź ponownie (też po odnowieniu dziennego limitu)
 
 # Minimalny odstęp między kolejnymi warm-upami (ochrona przed pętlą OOM-restart)
 _MIN_WARMUP_INTERVAL = 120  # sekund
+
+
+# ─── Poświadczenia: "ACCOUNT_ID:TOKEN" ────────────────────────────────────────
+
+
+def pack_cf_credential(account_id: str, token: str) -> str:
+    """Skleja Account ID i token w jeden string (token CF nie zawiera ':')."""
+    return f"{account_id}:{token}"
+
+
+def unpack_cf_credential(value: str) -> tuple[str, str]:
+    """Rozdziela "ACCOUNT_ID:TOKEN". Zwraca ("", "") przy złym formacie."""
+    if value and ":" in value:
+        account_id, token = value.split(":", 1)
+        return account_id.strip(), token.strip()
+    return "", (value or "").strip()
 
 
 # ─── Stan tokenu ──────────────────────────────────────────────────────────────
@@ -100,12 +130,23 @@ class HFTokenManager:
     # ── Wczytywanie tokenów ze środowiska ─────────────────────────────────────
 
     def _load_from_env(self) -> list[_TokenState]:
-        names = ["HF_TOKEN"] + [f"HF_TOKEN{i}" for i in range(1, _TOKEN_RANGE)]
+        default_account = os.getenv("CF_ACCOUNT_ID", "").strip()
+        names = ["CF_API_TOKEN"] + [f"CF_API_TOKEN{i}" for i in range(1, _TOKEN_RANGE)]
         states = []
         for name in names:
             val = os.getenv(name, "").strip()
-            if val:
-                states.append(_TokenState(name, val))
+            if not val:
+                continue
+            suffix = name[len("CF_API_TOKEN"):]  # "" albo "1", "2", …
+            account_id = os.getenv(f"CF_ACCOUNT_ID{suffix}", "").strip() or default_account
+            if not account_id:
+                logger.error(
+                    "[hf-manager] Token %s pominięty — brak CF_ACCOUNT_ID%s w zmiennych środowiskowych",
+                    name,
+                    suffix,
+                )
+                continue
+            states.append(_TokenState(name, pack_cf_credential(account_id, val)))
         return states
 
     # ── Lekka weryfikacja jednego tokenu ──────────────────────────────────────
@@ -113,91 +154,60 @@ class HFTokenManager:
     @staticmethod
     def _check_token_alive(name: str, value: str) -> tuple[bool, str]:
         """
-        Sprawdza token przez GET /api/whoami-v2.
+        Sprawdza token przez GET .../tokens/verify (nie zużywa neuronów).
 
-        Strategia dwuetapowa:
-          1. Próba /api/whoami-v2 — bardziej permisywny niż whoami,
-             akceptuje tokeny z ograniczonym scope (np. inference-only).
-          2. Jeśli whoami-v2 zwróci 401 — fallback do lekkiego inference
-             request (modele/lista), żeby odróżnić token inference-only
-             od naprawdę nieważnego.
-
-        Token jest uznawany za MARTWY wyłącznie gdy OBA endpointy
-        zwrócą 401/403. Timeout i inne błędy = zakładamy aktywny.
+        Token jest uznawany za MARTWY wyłącznie gdy:
+          - verify zwróci status inny niż "active" (expired/disabled), albo
+          - OBA endpointy (user i account) zwrócą 401/403.
+        Timeout, 429 i błędy 5xx = zakładamy aktywny (fail-safe).
         """
-        headers = {"Authorization": f"Bearer {value}"}
+        account_id, token = unpack_cf_credential(value)
+        headers = {"Authorization": f"Bearer {token}"}
 
-        # ── Krok 1: whoami-v2 ─────────────────────────────────────────────────
-        try:
-            resp = _requests.get(
-                _HF_CHECK_URL, headers=headers, timeout=_CHECK_TIMEOUT
-            )
+        urls = [f"{_CF_API}/user/tokens/verify"]
+        if account_id:
+            urls.append(f"{_CF_API}/accounts/{account_id}/tokens/verify")
+
+        last_auth_status = None
+        for url in urls:
+            try:
+                resp = _requests.get(url, headers=headers, timeout=_CHECK_TIMEOUT)
+            except _requests.exceptions.Timeout:
+                logger.warning("[hf-manager] Token %s: timeout verify — zakładam aktywny", name)
+                return True, ""
+            except Exception as e:
+                logger.warning(
+                    "[hf-manager] Token %s: błąd verify (%s) — zakładam aktywny", name, e
+                )
+                return True, ""
+
+            status = resp.status_code
+            if status == 200:
+                try:
+                    cf_status = ((resp.json() or {}).get("result") or {}).get("status")
+                except Exception:
+                    cf_status = None
+                resp.close()
+                if cf_status and cf_status != "active":
+                    reason = f"Token Cloudflare ma status '{cf_status}'"
+                    logger.warning("[hf-manager] Token %s MARTWY: %s", name, reason)
+                    return False, reason
+                return True, ""
+
             resp.close()
-            if resp.status_code == 200:
-                return True, ""
-            elif resp.status_code == 429:
-                logger.warning(
-                    "[hf-manager] Token %s: rate limit whoami-v2 — zakładam aktywny", name
-                )
-                return True, ""
-            elif resp.status_code not in (401, 403):
-                # Nieznany status (5xx itp.) — nie uśmiercaj
-                logger.debug(
-                    "[hf-manager] Token %s: HTTP %s na whoami-v2 — zakładam aktywny",
-                    name, resp.status_code,
-                )
-                return True, ""
-            # 401/403 na whoami-v2 — może być token inference-only, sprawdź dalej
-            whoami_status = resp.status_code
-        except _requests.exceptions.Timeout:
-            logger.warning("[hf-manager] Token %s: timeout whoami-v2 — zakładam aktywny", name)
-            return True, ""
-        except Exception as e:
-            logger.warning(
-                "[hf-manager] Token %s: błąd whoami-v2 (%s) — zakładam aktywny", name, e
+            if status in (401, 403):
+                last_auth_status = status
+                continue  # spróbuj drugiego endpointu (user ↔ account)
+
+            # 429 / 5xx / inne — nie uśmiercaj
+            logger.debug(
+                "[hf-manager] Token %s: HTTP %s na verify — zakładam aktywny", name, status
             )
             return True, ""
 
-        # ── Krok 2: fallback — lekki endpoint models (nie wymaga konta) ───────
-        # Tokeny inference-only mogą nie przejść whoami, ale działają na inference.
-        # /api/models?limit=1 odpowiada 200 dla każdego ważnego tokenu HF.
-        try:
-            resp2 = _requests.get(
-                "https://huggingface.co/api/models?limit=1",
-                headers=headers,
-                timeout=_CHECK_TIMEOUT,
-            )
-            resp2.close()
-            if resp2.status_code == 200:
-                logger.debug(
-                    "[hf-manager] Token %s: 401 na whoami-v2, ale OK na models — aktywny",
-                    name,
-                )
-                return True, ""
-            elif resp2.status_code == 429:
-                logger.warning(
-                    "[hf-manager] Token %s: rate limit models — zakładam aktywny", name
-                )
-                return True, ""
-            elif resp2.status_code in (401, 403):
-                # Oba endpointy odrzuciły — token naprawdę nieważny
-                reason = f"Nieważny token (HTTP {whoami_status} + {resp2.status_code})"
-                logger.warning("[hf-manager] Token %s MARTWY: %s", name, reason)
-                return False, reason
-            else:
-                logger.debug(
-                    "[hf-manager] Token %s: HTTP %s na models — zakładam aktywny",
-                    name, resp2.status_code,
-                )
-                return True, ""
-        except _requests.exceptions.Timeout:
-            logger.warning("[hf-manager] Token %s: timeout models — zakładam aktywny", name)
-            return True, ""
-        except Exception as e:
-            logger.warning(
-                "[hf-manager] Token %s: błąd models (%s) — zakładam aktywny", name, e
-            )
-            return True, ""
+        reason = f"Nieważny token (HTTP {last_auth_status} na user i account verify)"
+        logger.warning("[hf-manager] Token %s MARTWY: %s", name, reason)
+        return False, reason
 
     # ── Warm-up ───────────────────────────────────────────────────────────────
 
@@ -227,13 +237,15 @@ class HFTokenManager:
 
             states = self._load_from_env()
             if not states:
-                logger.error("[hf-manager] Brak tokenów HF w zmiennych środowiskowych!")
+                logger.error(
+                    "[hf-manager] Brak tokenów Cloudflare (CF_API_TOKEN* + CF_ACCOUNT_ID) w zmiennych środowiskowych!"
+                )
                 with self._lock:
                     self._tokens = {}
                     self._warmed_up = True
                 return
 
-            logger.info("[hf-manager] Warm-up: sprawdzam %d tokenów HF…", len(states))
+            logger.info("[hf-manager] Warm-up: sprawdzam %d tokenów Cloudflare…", len(states))
 
             # Równoległe sprawdzanie z ograniczoną pulą wątków
             results: dict[str, tuple[bool, str]] = {}
@@ -375,7 +387,7 @@ class HFTokenManager:
             return self._all_dead_since > 0
 
     def status_report(self) -> list[dict]:
-        """Pełny raport stanu — do /admin/hf-status."""
+        """Pełny raport stanu — do /admin/hf-reset."""
         if not self._warmed_up:
             # Nie blokuj endpointu status jeśli warm-up nie był wykonany
             return [{"info": "warm-up nie wykonany — brak danych"}]
@@ -399,7 +411,7 @@ class HFTokenManager:
     def reset(self) -> None:
         """
         Resetuje stan — wymusza ponowny warm-up przy następnym użyciu.
-        Używa przy ręcznym odnowieniu tokenów w Render env.
+        Używać przy ręcznej zmianie tokenów w Render env.
         """
         with self._warmup_lock:
             with self._lock:
@@ -412,7 +424,7 @@ class HFTokenManager:
     def force_reset(self) -> None:
         """
         Reset TWARDY — ignoruje _MIN_WARMUP_INTERVAL.
-        Tylko do użytku przez /admin/hf-reset gdy tokeny faktycznie odnowiono.
+        Tylko do użytku przez /admin/hf-reset gdy tokeny faktycznie zmieniono.
         """
         with self._warmup_lock:
             with self._lock:
@@ -427,6 +439,7 @@ class HFTokenManager:
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
 hf_tokens = HFTokenManager()
+cf_tokens = hf_tokens  # alias — nowa, poprawna nazwa
 
 
 # ── Skróty (dla wygody migracji) ──────────────────────────────────────────────

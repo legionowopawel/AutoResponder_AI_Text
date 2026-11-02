@@ -20,19 +20,27 @@ DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 DEEPSEEK_MODEL = "deepseek-chat"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FLUX / HUGGING FACE INFERENCE PROVIDERS
-# 2026-08: "hf-inference" (bezpośredni hosting HF) przestał obsługiwać
-# FLUX.1-schnell (HTTP 410). Generowanie idzie teraz przez routowanego
-# providera — patrz core/flux_client.py. Zmień HF_PROVIDER tutaj, jeśli
-# Together kiedyś też wycofa darmowy dostęp (np. na "fal-ai" albo "nscale").
+# FLUX / CLOUDFLARE WORKERS AI
+# 2026-11: Hugging Face przestało odnawiać darmowe kredyty → generowanie obrazów
+# przeniesione na Cloudflare Workers AI (REST API). Patrz core/flux_client.py.
+#
+# Zmienne środowiskowe na Render (patrz core/hf_token_manager.py):
+#   CF_ACCOUNT_ID   — Account ID z Cloudflare (32 znaki hex, ten z adresu dashboardu)
+#   CF_API_TOKEN    — token "Workers AI" (Read + Edit); kolejne: CF_API_TOKEN1, CF_API_TOKEN2…
+#   (opcjonalnie CF_ACCOUNT_ID1… — gdy token nr 1 należy do INNEGO konta Cloudflare)
+#
+# Darmowy limit: 10 000 neuronów DZIENNIE na konto (odnawiany codziennie).
+# Kilka tokenów z TEGO SAMEGO konta NIE zwiększa limitu — dopiero osobne konta.
 # ─────────────────────────────────────────────────────────────────────────────
-HF_PROVIDER = "auto"
-HF_PROVIDER_PRIORITY = ["fal-ai", "replicate", "wavespeed", "nscale", "together"]
-HF_PROVIDER_CACHE_TTL = 300
-HF_PROVIDER_HEALTHCHECK_TIMEOUT = 15
-HF_MODEL_FLUX = "black-forest-labs/FLUX.1-schnell"
+CF_API_BASE = "https://api.cloudflare.com/client/v4"
+CF_MODEL_FLUX = "@cf/black-forest-labs/flux-1-schnell"
+CF_MAX_PROMPT_CHARS = 2048  # twardy limit modelu — dłuższy prompt jest przycinany
+CF_MAX_STEPS = 8  # twardy limit modelu flux-1-schnell
+
+# Nazwy poniżej (HF_*) zostają dla zgodności z responderami (zwykly, smierc,
+# zwykly_psychiatryczny_raport importują je z core.config).
 HF_STEPS = 5
-HF_GUIDANCE = 2
+HF_GUIDANCE = 2  # Cloudflare flux-1-schnell NIE obsługuje guidance — ignorowane
 HF_TIMEOUT = 55
 TYLER_JPG_QUALITY = 85  # Kompresja JPG paneli tryptyku (95% = minimalna strata)
 

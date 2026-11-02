@@ -4,191 +4,195 @@ core/flux_client.py
 Wspólny klient generowania obrazów FLUX — używany przez zwykly.py, smierc.py
 i zwykly_psychiatryczny_raport.py.
 
-DLACZEGO TEN PLIK ISTNIEJE (2026-08):
-  Endpoint "hf-inference" (bezpośredni hosting modeli przez Hugging Face)
-  przestał obsługiwać FLUX.1-schnell (HTTP 410 "deprecated and no longer
-  supported by provider hf-inference"). HF w 2026 kieruje generowanie obrazów
-  przez zewnętrznych providerów (Together AI, fal, Replicate, ...) poprzez
-  wspólny router — huggingface_hub.InferenceClient obsługuje to automatycznie,
-  rozliczając się z darmowego limitu "Inference Providers credits" na tym
-  samym tokenie HF_TOKEN*, którego już używasz.
+2026-11: PRZENIESIONY Z HUGGING FACE NA CLOUDFLARE WORKERS AI.
+  Hugging Face przestało odnawiać kredyty. Teraz generujemy przez REST API:
 
-  Surowe requesty POST na stary URL (".../hf-inference/models/...") nie
-  zadziałają z nowym providerem — format zapytania/odpowiedzi jest inny,
-  stąd ten wrapper zamiast samej zmiany stałej URL.
+    POST https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/run/
+         @cf/black-forest-labs/flux-1-schnell
+    Authorization: Bearer {CF_API_TOKEN}
+    {"prompt": "...", "steps": 5, "seed": 123}
+
+  Odpowiedź: JSON, obraz w result.image jako base64 (JPEG).
+
+RÓŻNICE WZGLĘDEM HF (obsłużone TUTAJ, respondery bez zmian):
+  • prompt max 2048 znaków → dłuższy jest przycinany (na granicy słowa)
+  • steps max 8 → przycinane do 1..8
+  • guidance_scale NIE istnieje → parametr `guidance` jest ignorowany
+  • width/height NIE istnieją → obraz (1024×1024) jest kadrowany od środka do
+    żądanych proporcji (np. 768×1024 dla zdjęcia pacjenta) przez Pillow
+  • wynik jest konwertowany do PNG, żeby kontrakt "zwraca bajty PNG" został
+
+ZGODNOŚĆ BŁĘDÓW (dlatego respondery nie wymagają zmian):
+  Klasa FluxHTTPError ma te same pola co dawny HfHubHTTPError
+  (.response.status_code / .text / .json()) i jest dostępna pod starą nazwą
+  `HfHubHTTPError`. Kody Cloudflare są mapowane na semantykę, którą respondery
+  już rozumieją:
+    • 3036 "daily free allocation of 10,000 neurons"  → HTTP 402  (mark_dead + stop)
+    • 3040 / inne 429 "capacity"                      → HTTP 429  (chwilowe, bez mark_dead)
+    • 401 / 403                                       → HTTP 401/403 (mark_dead)
+    • błąd sieci / timeout                            → response=None
 
 UŻYCIE:
     from core.flux_client import generate_flux_bytes, HfHubHTTPError
 
     try:
-        png_bytes = generate_flux_bytes(prompt, token, seed=123, steps=5, guidance=2)
+        png_bytes = generate_flux_bytes(prompt, token, seed=123, steps=5)
     except HfHubHTTPError as e:
         status = e.response.status_code if e.response is not None else None
-        # 401/402/403 → mark_dead(name) tak jak wcześniej
 ════════════════════════════════════════════════════════════════════════════════
 """
 
 from __future__ import annotations
 
+import base64
 import io
+import json
 import logging
-import threading
-import time
 
-from huggingface_hub import InferenceClient
-from huggingface_hub.errors import HfHubHTTPError  # re-eksport dla responderów
+import requests
 
 from core.config import (
-    HF_MODEL_FLUX,
-    HF_PROVIDER,
-    HF_PROVIDER_CACHE_TTL,
-    HF_PROVIDER_HEALTHCHECK_TIMEOUT,
-    HF_PROVIDER_PRIORITY,
+    CF_API_BASE,
+    CF_MAX_PROMPT_CHARS,
+    CF_MAX_STEPS,
+    CF_MODEL_FLUX,
 )
+from core.hf_token_manager import unpack_cf_credential
 
 logger = logging.getLogger(__name__)
 
-_ACTIVE_PROVIDER_CACHE: dict[str, tuple[str, float]] = {}
-_ACTIVE_PROVIDER_LOCK = threading.Lock()
+__all__ = ["generate_flux_bytes", "FluxHTTPError", "HfHubHTTPError"]
 
 
-class _NullResponse:
-    """
-    BUGFIX (2026-08-23): zaślepka podstawiana zamiast response=None.
+# ─── Błędy (zgodne z dawnym HfHubHTTPError) ───────────────────────────────────
 
-    huggingface_hub.errors.HfHubHTTPError.__init__ bezwarunkowo robi
-    `response.headers.get(...)` i `response.request`. Wywołanie
-    `HfHubHTTPError(msg, response=None)` samo rzuca więc
-    `AttributeError: 'NoneType' object has no attribute 'headers'`
-    w trakcie KONSTRUOWANIA wyjątku — co tłumaczy, dlaczego ten
-    surowy komunikat nadal pojawiał się w logach mimo wcześniejszej
-    "poprawki": ta poprawka properly nie mogła zadziałać, bo sama
-    wywoływała ten sam błąd przy próbie zgłoszenia go dalej.
 
-    Ta klasa udaje minimalny obiekt response z pustym `headers` i
-    `request=None`, żeby konstruktor HfHubHTTPError przeszedł bez
-    wyjątku. `status_code` i `text` też ustawione na bezpieczne
-    wartości domyślne, bo część kodu wyżej w stosie (responderzy)
-    może je odczytywać przy obsłudze błędu.
-    """
+class _ErrorResponse:
+    """Minimalny obiekt response: status_code, text, headers, json()."""
 
-    headers: dict = {}
-    request = None
-    status_code = None
-    text = ""
+    def __init__(self, status_code, message: str, cf_code=None):
+        self.status_code = status_code
+        payload = {"error": message}
+        if cf_code is not None:
+            payload["cf_code"] = cf_code
+        self._payload = payload
+        self.text = json.dumps(payload, ensure_ascii=False)
+        self.headers: dict = {}
+        self.request = None
 
     def json(self):
-        return {}
+        return dict(self._payload)
 
 
-def _safe_hf_hub_http_error(message: str) -> HfHubHTTPError:
-    """Buduje HfHubHTTPError dla przypadku 'brak odpowiedzi z sieci' bez
-    ryzyka wtórnego AttributeError przy samym konstruowaniu wyjątku."""
-    return HfHubHTTPError(message, response=_NullResponse())
+class FluxHTTPError(Exception):
+    """Błąd generowania obrazu. `.response` jak w requests/huggingface_hub."""
+
+    def __init__(self, message: str, response=None):
+        super().__init__(message)
+        self.response = response
 
 
-class _StatusResponse(_NullResponse):
-    """Zaślepka response z konkretnym kodem HTTP (np. 402), żeby respondery
-    mogły rozpoznać martwy token (mark_dead) zamiast widzieć 'HTTP None'."""
-
-    def __init__(self, status_code: int):
-        self.status_code = status_code
-        self.headers = {}
+# Stara nazwa — respondery robią `from core.flux_client import HfHubHTTPError`.
+HfHubHTTPError = FluxHTTPError
 
 
-# Ostatni krytyczny status (401/402/403) zaobserwowany dla tokenu w health-checku.
-_TOKEN_FATAL_STATUS: dict[str, int] = {}
+# ─── Pomocnicze ───────────────────────────────────────────────────────────────
 
 
-def _exc_status(exc: Exception) -> int | None:
-    resp = getattr(exc, "response", None)
-    code = getattr(resp, "status_code", None)
-    return code if isinstance(code, int) else None
+def _parse_cf_error(resp: requests.Response) -> tuple[int | None, str]:
+    """Wyciąga (kod, komunikat) z odpowiedzi błędu Cloudflare."""
+    try:
+        data = resp.json()
+    except Exception:
+        return None, (resp.text or "")[:200]
+    errors = data.get("errors") if isinstance(data, dict) else None
+    if errors and isinstance(errors, list) and isinstance(errors[0], dict):
+        return errors[0].get("code"), str(errors[0].get("message", ""))[:300]
+    return None, str(data)[:200]
 
 
-def _get_provider_candidates(explicit_provider: str | None = None) -> list[str]:
-    """Zwraca kolejność providerów do testowania."""
-    if explicit_provider and explicit_provider != "auto":
-        ordered = [explicit_provider]
-        for provider in HF_PROVIDER_PRIORITY:
-            if provider not in ordered:
-                ordered.append(provider)
-        return ordered
-    return list(HF_PROVIDER_PRIORITY)
+def _raise_for_cf_status(resp: requests.Response) -> None:
+    """Mapuje błąd Cloudflare na FluxHTTPError o semantyce znanej responderom."""
+    status = resp.status_code
+    code, msg = _parse_cf_error(resp)
+    low = msg.lower()
+
+    # Dzienny limit darmowych neuronów — trwały do północy UTC.
+    # Mapujemy na 402: respondery robią mark_dead(name) i (smierc / psych)
+    # przerywają dalsze próby. Tekst celowo zawiera "exhausted" i
+    # "purchase pre-paid credits" — po tych frazach responderzy rozpoznają
+    # globalne wyczerpanie.
+    if code == 3036 or (status == 429 and "daily free allocation" in low):
+        text = (
+            "Cloudflare Workers AI: daily free allocation of 10,000 neurons "
+            "exhausted (code 3036). Upgrade to Workers Paid or purchase "
+            "pre-paid credits to continue."
+        )
+        raise FluxHTTPError(text, _ErrorResponse(402, text, 3036))
+
+    # Chwilowy brak mocy (3040) i inne 429 — NIE używamy słów "exceeded"/"quota"
+    # (oryginalny komunikat CF zawiera "exceeded"), bo _quota_permanently_exhausted
+    # w responderach uznałby to za trwałe wyczerpanie i uśmiercił token.
+    if status == 429:
+        text = f"Cloudflare busy, retry later (code {code})"
+        raise FluxHTTPError(text, _ErrorResponse(429, text, code))
+
+    text = f"Cloudflare HTTP {status} (code {code}): {msg[:150]}"
+    raise FluxHTTPError(text, _ErrorResponse(status, msg[:200] or text, code))
 
 
-def _summarize_error(exc: Exception) -> str:
-    message = str(exc)
-    if not message:
-        return exc.__class__.__name__
-    return message[:180].strip()
-
-
-def get_working_provider(token: str, model_name: str = HF_MODEL_FLUX) -> str | None:
-    """Sprawdza kolejno providery i zwraca pierwszego, który odpowiada poprawnie."""
-    candidates = _get_provider_candidates(HF_PROVIDER)
-    now = time.monotonic()
-
-    with _ACTIVE_PROVIDER_LOCK:
-        cached_provider, cached_at = _ACTIVE_PROVIDER_CACHE.get(token, (None, 0.0))
-        if cached_provider and (now - cached_at) < HF_PROVIDER_CACHE_TTL:
-            logger.info(
-                "[FLUX] Używam cache providera dla tokenu %s: '%s' (TTL %.0fs)",
-                token[:6],
-                cached_provider,
-                HF_PROVIDER_CACHE_TTL,
-            )
-            return cached_provider
-
-    _TOKEN_FATAL_STATUS.pop(token, None)
-    for provider in candidates:
-        logger.info("[FLUX] Sprawdzam dostępność providera: '%s'...", provider)
-        try:
-            client = InferenceClient(
-                provider=provider,
-                api_key=token,
-                timeout=HF_PROVIDER_HEALTHCHECK_TIMEOUT,
-            )
-            client.text_to_image(
-                "ping",
-                model=model_name,
-                width=64,
-                height=64,
-                num_inference_steps=1,
-                guidance_scale=1.0,
-            )
-            logger.info(
-                "[FLUX] Provider '%s' odpowiada prawidłowo (200 OK). Wybrano ostatecznie: '%s'.",
-                provider,
-                provider,
-            )
-            with _ACTIVE_PROVIDER_LOCK:
-                _ACTIVE_PROVIDER_CACHE[token] = (provider, time.monotonic())
-            return provider
-        except Exception as exc:
-            logger.warning(
-                "[FLUX] Provider '%s' zgłosił problem: %s. Próbuję następnego...",
-                provider,
-                _summarize_error(exc),
-            )
-            status = _exc_status(exc)
-            if status in (401, 402, 403):
-                # Kredyty/token są per konto HF — pozostali providerzy
-                # zwrócą to samo. Nie tracimy czasu, przechodzimy do
-                # następnego tokenu.
-                _TOKEN_FATAL_STATUS[token] = status
-                logger.warning(
-                    "[FLUX] HTTP %s dla tokenu %s — pomijam resztę providerów.",
-                    status,
-                    token[:6],
-                )
-                return None
-
-    logger.error(
-        "[FLUX] Żaden z listowanych providerów nie odpowiada dla modelu '%s'!",
-        model_name,
+def _truncate_prompt(prompt: str) -> str:
+    prompt = (prompt or "").strip()
+    if len(prompt) <= CF_MAX_PROMPT_CHARS:
+        return prompt
+    cut = prompt[:CF_MAX_PROMPT_CHARS]
+    last_space = cut.rfind(" ")
+    if last_space > CF_MAX_PROMPT_CHARS * 0.8:
+        cut = cut[:last_space]
+    logger.warning(
+        "[FLUX] Prompt %d znaków > limit %d — przycięty",
+        len(prompt),
+        CF_MAX_PROMPT_CHARS,
     )
-    return None
+    return cut.rstrip()
+
+
+def _to_png_bytes(raw: bytes, width: int | None, height: int | None) -> bytes:
+    """JPEG z Cloudflare → PNG (kontrakt: zwracamy PNG). Opcjonalnie kadruje
+    od środka do proporcji width:height (Cloudflare nie ma width/height)."""
+    try:
+        from PIL import Image
+    except ImportError:
+        logger.error("[FLUX] Pillow niedostępny — zwracam surowe bajty (JPEG)")
+        return raw
+
+    img = Image.open(io.BytesIO(raw))
+    img.load()
+    if img.mode not in ("RGB", "RGBA"):
+        img = img.convert("RGB")
+
+    if width and height:
+        w, h = img.size
+        target = width / height
+        current = w / h
+        if abs(current - target) > 0.01:
+            if current > target:
+                new_w = round(h * target)
+                left = (w - new_w) // 2
+                img = img.crop((left, 0, left + new_w, h))
+            else:
+                new_h = round(w / target)
+                top = (h - new_h) // 2
+                img = img.crop((0, top, w, top + new_h))
+        if img.size != (width, height):
+            img = img.resize((width, height), Image.LANCZOS)
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+# ─── Główna funkcja ───────────────────────────────────────────────────────────
 
 
 def generate_flux_bytes(
@@ -196,95 +200,78 @@ def generate_flux_bytes(
     token: str,
     seed: int | None = None,
     steps: int = 5,
-    guidance: float = 2.0,
+    guidance: float = 2.0,  # ignorowane — Cloudflare flux-1-schnell nie ma guidance
     width: int | None = None,
     height: int | None = None,
     timeout: int = 55,
-    provider: str | None = None,
+    provider: str | None = None,  # ignorowane — zachowane dla zgodności sygnatury
 ) -> bytes:
     """
-    Generuje obrazek FLUX przez routowanego providera HF.
-    Zwraca surowe bajty PNG (kompatybilne z dotychczasowym kodem
-    kompresji JPG / base64 w responderach).
+    Generuje obrazek FLUX przez Cloudflare Workers AI. Zwraca surowe bajty PNG.
 
-    Jeżeli provider nie został jawnie podany, wybieramy aktywnego providera
-    przez dwuetapowy health check (PING -> RUN), aby nie marnować czasu na
-    uszkodzone infrastrukturalnie endpointy typu Together z HTTP 503.
+    `token` to wartość z get_active_tokens(), czyli "ACCOUNT_ID:TOKEN".
+    Błędy: FluxHTTPError (alias HfHubHTTPError) — patrz opis modułu.
     """
+    account_id, api_token = unpack_cf_credential(token)
+    if not account_id or not api_token:
+        msg = "Cloudflare: brak Account ID lub tokenu (sprawdź CF_ACCOUNT_ID i CF_API_TOKEN)"
+        raise FluxHTTPError(msg, _ErrorResponse(401, msg))
 
-    selected_provider = provider or get_working_provider(token, HF_MODEL_FLUX)
-    if not selected_provider:
-        fatal = _TOKEN_FATAL_STATUS.get(token)
-        if fatal:
-            raise HfHubHTTPError(
-                f"HF token rejected (HTTP {fatal})", response=_StatusResponse(fatal)
-            )
-        raise _safe_hf_hub_http_error("No working HF image provider available")
+    payload: dict = {
+        "prompt": _truncate_prompt(prompt),
+        "steps": max(1, min(int(steps or 4), CF_MAX_STEPS)),
+    }
+    if seed is not None:
+        payload["seed"] = int(seed) & 0x7FFFFFFF
 
+    url = f"{CF_API_BASE}/accounts/{account_id}/ai/run/{CF_MODEL_FLUX}"
     logger.info(
-        "[FLUX] Rozpoczynam generowanie właściwego obrazka przy użyciu providera '%s' i tokenu %s...",
-        selected_provider,
-        token[:6],
+        "[FLUX] Cloudflare %s steps=%s seed=%s (konto %s…)",
+        CF_MODEL_FLUX,
+        payload["steps"],
+        payload.get("seed"),
+        account_id[:6],
     )
 
-    last_error: Exception | None = None
-    for candidate in _get_provider_candidates(selected_provider):
+    try:
+        resp = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {api_token}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=(10, timeout),
+        )
+    except requests.exceptions.RequestException as exc:
+        # Błąd sieci / timeout — brak odpowiedzi HTTP → response=None
+        raise FluxHTTPError(f"Cloudflare: błąd połączenia: {str(exc)[:150]}", None) from exc
+
+    if resp.status_code != 200:
+        _raise_for_cf_status(resp)
+
+    ctype = (resp.headers.get("content-type") or "").lower()
+    if ctype.startswith("image/"):
+        raw = resp.content
+    else:
         try:
-            client = InferenceClient(
-                provider=candidate,
-                api_key=token,
-                timeout=timeout,
-            )
-            kwargs = {}
-            if seed is not None:
-                kwargs["seed"] = seed
-            if steps:
-                kwargs["num_inference_steps"] = steps
-            if guidance is not None:
-                kwargs["guidance_scale"] = guidance
-            if width:
-                kwargs["width"] = width
-            if height:
-                kwargs["height"] = height
-
-            image = client.text_to_image(prompt, model=HF_MODEL_FLUX, **kwargs)
-
-            with _ACTIVE_PROVIDER_LOCK:
-                _ACTIVE_PROVIDER_CACHE[token] = (candidate, time.monotonic())
-
-            buf = io.BytesIO()
-            image.save(buf, format="PNG")
-            return buf.getvalue()
-        except AttributeError as exc:
-            # BUGFIX (2026-08-22): obserwowane w logach jako
-            # "'NoneType' object has no attribute 'headers'". Dzieje się
-            # WEWNĄTRZ huggingface_hub/InferenceClient, gdy request do
-            # providera pada na poziomie połączenia (np. reset, timeout,
-            # DNS) i biblioteka próbuje odczytać nagłówki z odpowiedzi,
-            # która nigdy nie nadeszła (response=None). To nie jest
-            # HfHubHTTPError (nie ma sensownego kodu statusu) — normalizujemy
-            # to do HfHubHTTPError z response=None, żeby dalsze warstwy
-            # (zwykly_psychiatryczny_raport._generate_flux) traktowały to
-            # tak samo jak każdy inny "response=None" przypadek zamiast
-            # dostawać gołego AttributeError o mylącej treści.
-            last_error = _safe_hf_hub_http_error(
-                f"Provider '{candidate}' zwrócił odpowiedź bez nagłówków "
-                f"(prawdopodobny zrywany request na poziomie sieci): {exc}"
-            )
-            logger.warning(
-                "[FLUX] Provider '%s' — request padł na poziomie połączenia "
-                "(brak response, oryginalnie AttributeError: %s). Przełączam na następny...",
-                candidate,
-                exc,
-            )
+            data = resp.json()
         except Exception as exc:
-            last_error = exc
-            logger.warning(
-                "[FLUX] Provider '%s' podczas generowania zwrócił błąd: %s. Przełączam na następny...",
-                candidate,
-                _summarize_error(exc),
-            )
+            msg = "Cloudflare: odpowiedź nie jest JSON-em"
+            raise FluxHTTPError(msg, _ErrorResponse(502, msg)) from exc
+        if isinstance(data, dict) and data.get("success") is False:
+            code, msg = _parse_cf_error(resp)
+            text = f"Cloudflare: success=false (code {code}): {msg[:150]}"
+            raise FluxHTTPError(text, _ErrorResponse(502, text, code))
+        result = data.get("result") if isinstance(data, dict) else None
+        b64 = result.get("image") if isinstance(result, dict) else None
+        if not b64:
+            msg = "Cloudflare: odpowiedź bez result.image"
+            raise FluxHTTPError(msg, _ErrorResponse(502, msg))
+        raw = base64.b64decode(b64)
 
-    if last_error is not None:
-        raise last_error
-    raise _safe_hf_hub_http_error("No FLUX generation provider succeeded")
+    try:
+        return _to_png_bytes(raw, width, height)
+    except Exception as exc:
+        msg = f"Cloudflare: nie udało się odczytać obrazu: {str(exc)[:120]}"
+        raise FluxHTTPError(msg, _ErrorResponse(502, msg)) from exc
